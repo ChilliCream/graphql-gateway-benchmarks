@@ -28,6 +28,7 @@ jobs:
             name: hive-router
           - path: composite-schema/gateways/hotchocolate
             name: hotchocolate
+            display_name: "hotchocolate (.net subgraphs)"
           - path: composite-schema/gateways/hotchocolate
             name: hotchocolate-rust
             subgraphs: subgraphs-rust
@@ -42,6 +43,8 @@ jobs:
 
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ${{ matrix.mode }}
+        env:
+          BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
 
       - name: Upload results
         if: always()

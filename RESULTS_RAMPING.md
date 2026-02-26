@@ -16,8 +16,8 @@ This scenario is a stress test that ramps up to **500 VUs** over **60s**.
 | :-------------------------- | :----: | :--------------------: | :--------------------: | :--------------------------------------- |
 | hive-router                 | 2118  | 131615 total, 0 failed | avg: 106ms, p95: 258ms | ✅                                        |
 | grafbase                    | 1959  | 123302 total, 0 failed | avg: 113ms, p95: 278ms | ✅                                        |
-| hotchocolate (rust)         |  971  | 62236 total, 0 failed  | avg: 225ms, p95: 539ms | ✅                                        |
-| hotchocolate                |  921  | 58618 total, 0 failed  | avg: 239ms, p95: 575ms | ✅                                        |
+| hotchocolate (rust subgraphs) |  971  | 62236 total, 0 failed  | avg: 225ms, p95: 539ms | ✅                                        |
+| hotchocolate (.net subgraphs) |  921  | 58618 total, 0 failed  | avg: 239ms, p95: 575ms | ✅                                        |
 | cosmo                       |  787  | 49908 total, 0 failed  | avg: 281ms, p95: 630ms | ✅                                        |
 | hive-gateway-router-runtime |  544  | 36016 total, 0 failed  | avg: 391ms, p95: 842ms | ❌ non-compatible response structure (5)  |
 | apollo-router               |  433  | 28835 total, 0 failed  | avg: 489ms, p95: 1155ms | ❌ non-compatible response structure (17) |
@@ -120,7 +120,7 @@ This scenario is a stress test that ramps up to **500 VUs** over **60s**.
 </details>
 
 <details>
-  <summary>Summary for: hotchocolate (rust)</summary>
+  <summary>Summary for: hotchocolate (rust subgraphs)</summary>
 
   **K6 Output**
 
@@ -167,7 +167,7 @@ This scenario is a stress test that ramps up to **500 VUs** over **60s**.
 </details>
 
 <details>
-  <summary>Summary for: hotchocolate</summary>
+  <summary>Summary for: hotchocolate (.net subgraphs)</summary>
 
   **K6 Output**
 

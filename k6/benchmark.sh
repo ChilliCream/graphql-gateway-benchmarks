@@ -272,9 +272,11 @@ fi
 # ---- Run iterations ----------------------------------------------------------
 
 GATEWAY_NAME="$(basename "$GATEWAY_REL")"
-if [[ -n "$SUBGRAPHS_OVERRIDE" ]]; then
+if [[ -n "${BENCH_DISPLAY_NAME:-}" ]]; then
+  DISPLAY_NAME="$BENCH_DISPLAY_NAME"
+elif [[ -n "$SUBGRAPHS_OVERRIDE" ]]; then
   SUBGRAPH_LABEL="${SUBGRAPHS_OVERRIDE#subgraphs-}"
-  DISPLAY_NAME="$GATEWAY_NAME ($SUBGRAPH_LABEL)"
+  DISPLAY_NAME="$GATEWAY_NAME ($SUBGRAPH_LABEL subgraphs)"
 else
   DISPLAY_NAME="$GATEWAY_NAME"
 fi

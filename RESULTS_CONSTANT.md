@@ -16,8 +16,8 @@ This scenario executes a constant load of **50 VUs** over **60s**.
 | :-------------------------- | :----: | :--------------------: | :--------------------: | :--------------------------------------- |
 | hive-router                 | 2015  | 121394 total, 0 failed |  avg: 25ms, p95: 42ms  | ✅                                        |
 | grafbase                    | 2010  | 121199 total, 0 failed |  avg: 25ms, p95: 45ms  | ✅                                        |
-| hotchocolate (rust)         |  909  | 54931 total, 0 failed  |  avg: 54ms, p95: 76ms  | ✅                                        |
-| hotchocolate                |  815  | 49204 total, 0 failed  |  avg: 61ms, p95: 85ms  | ✅                                        |
+| hotchocolate (rust subgraphs) |  909  | 54931 total, 0 failed  |  avg: 54ms, p95: 76ms  | ✅                                        |
+| hotchocolate (.net subgraphs) |  815  | 49204 total, 0 failed  |  avg: 61ms, p95: 85ms  | ✅                                        |
 | cosmo                       |  744  | 44977 total, 0 failed  |  avg: 66ms, p95: 96ms  | ✅                                        |
 | hive-gateway-router-runtime |  540  | 32795 total, 0 failed  | avg: 91ms, p95: 124ms  | ✅                                        |
 | apollo-router               |  393  | 23908 total, 0 failed  | avg: 125ms, p95: 163ms | ❌ non-compatible response structure (1)  |
@@ -120,7 +120,7 @@ This scenario executes a constant load of **50 VUs** over **60s**.
 </details>
 
 <details>
-  <summary>Summary for: hotchocolate (rust)</summary>
+  <summary>Summary for: hotchocolate (rust subgraphs)</summary>
 
   **K6 Output**
 
@@ -167,7 +167,7 @@ This scenario executes a constant load of **50 VUs** over **60s**.
 </details>
 
 <details>
-  <summary>Summary for: hotchocolate</summary>
+  <summary>Summary for: hotchocolate (.net subgraphs)</summary>
 
   **K6 Output**
 
