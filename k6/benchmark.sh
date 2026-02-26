@@ -186,6 +186,29 @@ maybe_taskset() {
   fi
 }
 
+# ---- Compute FORK for JS gateways -------------------------------------------
+# JS gateways (Node.js) are single-threaded by default. Export FORK so they
+# spawn the right number of cluster workers to match the assigned gateway cores.
+
+count_cores() {
+  python3 -c "
+import sys
+total = 0
+for part in sys.argv[1].split(','):
+    if '-' in part:
+        lo, hi = part.split('-')
+        total += int(hi) - int(lo) + 1
+    else:
+        total += 1
+print(total)
+" "$1"
+}
+
+if [[ -n "$GATEWAY_CPUSET" ]]; then
+  export FORK="$(count_cores "$GATEWAY_CPUSET")"
+  echo "FORK=$FORK (JS gateway worker count)"
+fi
+
 # ---- Install dependencies ---------------------------------------------------
 
 echo ""
