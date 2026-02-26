@@ -1,0 +1,26 @@
+{
+  "8": {
+    "constant": {
+      "k6": "0",
+      "gateway": "1-2",
+      "subgraphs": "3-7"
+    },
+    "ramping": {
+      "k6": "0-1",
+      "gateway": "2-3",
+      "subgraphs": "4-7"
+    }
+  },
+  "16": {
+    "constant": {
+      "k6": "0-1",
+      "gateway": "2-5",
+      "subgraphs": "6-15"
+    },
+    "ramping": {
+      "k6": "0-1",
+      "gateway": "2-6",
+      "subgraphs": "7-15"
+    }
+  }
+}
