@@ -28,6 +28,9 @@ jobs:
             name: hive-router
           - path: composite-schema/gateways/hotchocolate
             name: hotchocolate
+          - path: composite-schema/gateways/hotchocolate
+            name: hotchocolate-rust
+            subgraphs: subgraphs-rust
         mode:
           - constant
           - ramping
@@ -38,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run benchmark
-        run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.mode }}
+        run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ${{ matrix.mode }}
 
       - name: Upload results
         if: always()

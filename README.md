@@ -43,14 +43,17 @@ Subgraphs are built with .NET using [HotChocolate](https://github.com/ChilliCrea
 ### Run a benchmark
 
 ```bash
-./k6/benchmark.sh <gateway-path> [constant|ramping]
+./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|ramping]
 ```
 
 Examples:
 
 ```bash
-# HotChocolate gateway, constant load (default)
+# HotChocolate gateway, constant load (default), .NET subgraphs
 ./k6/benchmark.sh composite-schema/gateways/hotchocolate
+
+# HotChocolate gateway with Rust subgraphs
+./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
 
 # Cosmo gateway, ramping load
 ./k6/benchmark.sh apollo-federation/gateways/cosmo ramping

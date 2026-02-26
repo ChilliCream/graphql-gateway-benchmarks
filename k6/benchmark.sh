@@ -5,10 +5,12 @@ set -Eeuo pipefail
 # benchmark.sh — Full benchmark orchestrator
 #
 # Usage:
-#   ./k6/benchmark.sh <gateway-path> [constant|ramping]
+#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|ramping]
 #
 # Examples:
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate
+#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
+#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust ramping
 #   ./k6/benchmark.sh apollo-federation/gateways/cosmo ramping
 #
 # Environment variables:
@@ -21,18 +23,24 @@ set -Eeuo pipefail
 # ---- Args -------------------------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <gateway-path> [constant|ramping]"
+  echo "Usage: $0 <gateway-path> [subgraphs-dir] [constant|ramping]"
   echo "  e.g. $0 composite-schema/gateways/hotchocolate"
+  echo "  e.g. $0 composite-schema/gateways/hotchocolate subgraphs-rust"
   exit 1
 fi
 
 GATEWAY_REL="$1"
-LOAD_MODE="${2:-constant}"
+SUBGRAPHS_OVERRIDE=""
+LOAD_MODE="constant"
 
-if [[ "$LOAD_MODE" != "constant" && "$LOAD_MODE" != "ramping" ]]; then
-  echo "Error: mode must be 'constant' or 'ramping', got '$LOAD_MODE'"
-  exit 1
-fi
+# Parse remaining args: auto-detect mode vs subgraphs override
+for arg in "${@:2}"; do
+  if [[ "$arg" == "constant" || "$arg" == "ramping" ]]; then
+    LOAD_MODE="$arg"
+  else
+    SUBGRAPHS_OVERRIDE="$arg"
+  fi
+done
 
 WARMUP_SECONDS="${WARMUP_SECONDS:-15}"
 MEASURE_SECONDS="${MEASURE_SECONDS:-60}"
@@ -42,9 +50,13 @@ BENCH_RUNS="${BENCH_RUNS:-3}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATEWAY_DIR="$REPO_ROOT/$GATEWAY_REL"
-# Subgraphs dir: same top-level category, under "subgraphs"
+# Subgraphs dir: same top-level category, under "subgraphs" (or override)
 CATEGORY="$(echo "$GATEWAY_REL" | cut -d/ -f1)"
-SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/subgraphs"
+if [[ -n "$SUBGRAPHS_OVERRIDE" ]]; then
+  SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/$SUBGRAPHS_OVERRIDE"
+else
+  SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/subgraphs"
+fi
 
 for dir in "$GATEWAY_DIR" "$SUBGRAPHS_DIR"; do
   if [[ ! -d "$dir" ]]; then
@@ -260,6 +272,12 @@ fi
 # ---- Run iterations ----------------------------------------------------------
 
 GATEWAY_NAME="$(basename "$GATEWAY_REL")"
+if [[ -n "$SUBGRAPHS_OVERRIDE" ]]; then
+  SUBGRAPH_LABEL="${SUBGRAPHS_OVERRIDE#subgraphs-}"
+  DISPLAY_NAME="$GATEWAY_NAME ($SUBGRAPH_LABEL)"
+else
+  DISPLAY_NAME="$GATEWAY_NAME"
+fi
 K6_API_ADDR="127.0.0.1:6565"
 RESULTS_BASE="$GATEWAY_DIR/results"
 
@@ -285,9 +303,10 @@ json.dump({
     'mode': sys.argv[4],
     'timestamp': sys.argv[5],
     'run': int(sys.argv[6]),
-    'total_runs': int(sys.argv[7])
+    'total_runs': int(sys.argv[7]),
+    'display_name': sys.argv[9]
 }, open(sys.argv[8], 'w'), indent=2)
-" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json"
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME"
 
   echo "Results for run $RUN: $RESULT_DIR"
 

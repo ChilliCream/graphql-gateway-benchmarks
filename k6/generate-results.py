@@ -66,15 +66,20 @@ def extract_metrics(summary):
     }
 
 
+def get_display_name(metadata):
+    """Get display name from metadata, falling back to gateway name."""
+    return metadata.get("display_name", metadata["gateway"])
+
+
 def select_median_runs(results):
-    """Group runs by gateway, pick the median run by RPS for each gateway."""
+    """Group runs by display name, pick the median run by RPS for each gateway."""
     from collections import defaultdict
 
     groups = defaultdict(list)
     for r in results:
-        gateway = r["metadata"]["gateway"]
+        name = get_display_name(r["metadata"])
         metrics = extract_metrics(r["summary"])
-        groups[gateway].append({
+        groups[name].append({
             "result": r,
             "metrics": metrics,
         })
@@ -123,7 +128,8 @@ def generate_markdown(mode, results):
         "- **Apollo Federation** — subgraphs are built with Rust "
         "([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
         "- **Composite Schema** — subgraphs are built with .NET "
-        "([HotChocolate](https://github.com/ChilliCream/graphql-platform))\n"
+        "([HotChocolate](https://github.com/ChilliCream/graphql-platform)) "
+        "or Rust ([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
         "\n"
         "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS). "
         "Each gateway is tested 3 times and the median result (by RPS) is used."
