@@ -90,3 +90,7 @@ Each run produces a timestamped results directory:
   k6_summary.json   # full k6 metrics (machine-readable)
   k6_summary.txt    # k6 summary (human-readable)
 ```
+
+## Acknowledgments
+
+This benchmark repository is based on the work by [The Guild](https://the-guild.dev/) on [graphql-gateways-benchmark](https://github.com/graphql-hive/graphql-gateways-benchmark).
