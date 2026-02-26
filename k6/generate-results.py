@@ -115,30 +115,35 @@ def generate_markdown(mode, results):
 
     lines = []
 
+    SCENARIO_DESCRIPTION = (
+        "Each benchmark runs a GraphQL gateway with 4 subgraphs and executes a heavy nested "
+        "query that exercises federation/composition capabilities. The benchmarks cover two "
+        "schema composition approaches:\n"
+        "\n"
+        "- **Apollo Federation** — subgraphs are built with Rust "
+        "([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
+        "- **Composite Schema** — subgraphs are built with .NET "
+        "([HotChocolate](https://github.com/ChilliCream/graphql-platform))\n"
+        "\n"
+        "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS)."
+    )
+
     if mode == "constant":
         lines.append("## Overview for: `constant-vus-over-time`")
         lines.append("")
-        lines.append(
-            "This scenario runs 4 subgraphs and a GraphQL gateway with Federation spec, "
-            "and runs a heavy query. It's being executed with a constant amount of VUs over "
-            "a fixed amount of time. It measures things like memory usage, CPU usage, average "
-            "RPS. It also includes a summary of the entire execution, and metrics information "
-            "about HTTP execution times."
-        )
+        lines.append(SCENARIO_DESCRIPTION)
         lines.append("")
-        lines.append(f"This scenario was running {vus} VUs over {duration}")
+        lines.append(
+            f"This scenario executes a constant load of **{vus} VUs** over **{duration}**."
+        )
     else:
         lines.append("## Overview for: `ramping-vus`")
         lines.append("")
-        lines.append(
-            "This scenario runs 4 subgraphs and a GraphQL gateway with Federation spec, "
-            "and runs a heavy query. It's a stress test that ramps up virtual users over time "
-            "to find performance limits. It measures things like memory usage, CPU usage, "
-            "average RPS. It also includes a summary of the entire execution, and metrics "
-            "information about HTTP execution times."
-        )
+        lines.append(SCENARIO_DESCRIPTION)
         lines.append("")
-        lines.append(f"This scenario was ramping up to {vus} VUs over {duration}")
+        lines.append(
+            f"This scenario is a stress test that ramps up to **{vus} VUs** over **{duration}**."
+        )
 
     lines.append("")
     lines.append("")

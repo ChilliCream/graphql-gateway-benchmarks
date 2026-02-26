@@ -1,8 +1,13 @@
 ## Overview for: `constant-vus-over-time`
 
-This scenario runs 4 subgraphs and a GraphQL gateway with Federation spec, and runs a heavy query. It's being executed with a constant amount of VUs over a fixed amount of time. It measures things like memory usage, CPU usage, average RPS. It also includes a summary of the entire execution, and metrics information about HTTP execution times.
+Each benchmark runs a GraphQL gateway with 4 subgraphs and executes a heavy nested query that exercises federation/composition capabilities. The benchmarks cover two schema composition approaches:
 
-This scenario was running 50 VUs over 60s
+- **Apollo Federation** — subgraphs are built with Rust ([async-graphql](https://github.com/async-graphql/async-graphql) + axum)
+- **Composite Schema** — subgraphs are built with .NET ([HotChocolate](https://github.com/ChilliCream/graphql-platform))
+
+Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS).
+
+This scenario executes a constant load of **50 VUs** over **60s**.
 
 
 ### Comparison
