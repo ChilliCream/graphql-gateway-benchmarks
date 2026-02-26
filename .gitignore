@@ -57,3 +57,9 @@ target/
 
 ## Go
 /vendor/
+
+## temp and result files
+*_log.txt
+k6_summary.json
+k6_summary.txt
+data.csv

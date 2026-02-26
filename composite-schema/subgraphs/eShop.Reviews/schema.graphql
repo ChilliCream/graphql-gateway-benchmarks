@@ -1,0 +1,37 @@
+schema {
+  query: Query
+}
+
+type Product {
+  reviews: [Review!]!
+  upc: String!
+}
+
+type Query {
+  product(upc: ID!): Product! @lookup @internal
+  review(id: ID!): Review @lookup
+  user(id: ID!): User @lookup @internal
+}
+
+type Review {
+  id: ID!
+  author: User
+  product: Product
+  body: String!
+  authorId: String!
+  productUpc: String!
+}
+
+type User {
+  id: ID!
+  reviews: [Review!]!
+}
+
+directive @internal on OBJECT | FIELD_DEFINITION
+
+"""
+The @lookup directive is used within a source schema to specify output fields
+that can be used by the distributed GraphQL executor to resolve an entity by
+a stable key.
+"""
+directive @lookup on FIELD_DEFINITION
