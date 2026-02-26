@@ -3,6 +3,22 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+REQUIRED_DOTNET_MAJOR=10
+
+# --- Ensure .NET SDK is installed ---
+if command -v dotnet &>/dev/null; then
+  INSTALLED_MAJOR=$(dotnet --version | cut -d. -f1)
+  if [[ "$INSTALLED_MAJOR" -ge "$REQUIRED_DOTNET_MAJOR" ]]; then
+    echo ".NET SDK already installed: $(dotnet --version)"
+  else
+    echo ".NET SDK $INSTALLED_MAJOR found but need $REQUIRED_DOTNET_MAJOR+. Installing..."
+    curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+  fi
+else
+  echo ".NET SDK not found. Installing .NET $REQUIRED_DOTNET_MAJOR..."
+  curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+fi
+
 # --- Fetch latest HotChocolate preview version from NuGet ---
 echo "Fetching latest HotChocolate preview version from NuGet..."
 LATEST_PREVIEW=$(curl -s "https://api.nuget.org/v3-flatcontainer/hotchocolate.aspnetcore/index.json" \
