@@ -3,6 +3,9 @@ name: Benchmark
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   benchmark:
     strategy:
@@ -59,10 +62,18 @@ jobs:
       - name: Generate result documents
         run: python3 k6/generate-results.py artifacts/ .
 
-      - name: Upload result documents
-        uses: actions/upload-artifact@v4
-        with:
-          name: result-documents
-          path: |
-            RESULTS_CONSTANT.md
-            RESULTS_RAMPING.md
+      - name: Write job summary
+        run: |
+          echo "# Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat RESULTS_CONSTANT.md >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat RESULTS_RAMPING.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RESULTS_CONSTANT.md RESULTS_RAMPING.md
+          git diff --cached --quiet || git commit -m "Update benchmark results"
+          git push

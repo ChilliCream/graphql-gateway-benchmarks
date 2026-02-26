@@ -6,8 +6,8 @@
       "subgraphs": "3-7"
     },
     "ramping": {
-      "k6": "0-1",
-      "gateway": "2-3",
+      "k6": "0",
+      "gateway": "1-3",
       "subgraphs": "4-7"
     }
   },
