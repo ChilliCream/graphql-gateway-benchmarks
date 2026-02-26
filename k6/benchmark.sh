@@ -15,6 +15,7 @@ set -Eeuo pipefail
 #   WARMUP_SECONDS   Warmup duration before measurement (default: 15)
 #   MEASURE_SECONDS  Benchmark measurement duration (default: 60)
 #   BENCH_VUS        Virtual users (passed through to k6.js)
+#   BENCH_RUNS       Number of iterations per benchmark (default: 3, median used)
 # =============================================================================
 
 # ---- Args -------------------------------------------------------------------
@@ -35,6 +36,7 @@ fi
 
 WARMUP_SECONDS="${WARMUP_SECONDS:-15}"
 MEASURE_SECONDS="${MEASURE_SECONDS:-60}"
+BENCH_RUNS="${BENCH_RUNS:-3}"
 
 # ---- Paths ------------------------------------------------------------------
 
@@ -232,82 +234,101 @@ if [[ $ELAPSED -ge $TIMEOUT ]]; then
   exit 1
 fi
 
-# ---- Create output directory -------------------------------------------------
+# ---- Run iterations ----------------------------------------------------------
 
-OUTPUT_DIR="$GATEWAY_DIR"
 GATEWAY_NAME="$(basename "$GATEWAY_REL")"
-TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-RESULT_DIR="$OUTPUT_DIR/results/${TIMESTAMP}"
-mkdir -p "$RESULT_DIR"
+K6_API_ADDR="127.0.0.1:6565"
+RESULTS_BASE="$GATEWAY_DIR/results"
 
-# Write metadata for report generation
-python3 -c "
+for RUN in $(seq 1 "$BENCH_RUNS"); do
+  echo ""
+  echo "######################################################################"
+  echo "# Run $RUN of $BENCH_RUNS"
+  echo "######################################################################"
+
+  # ---- Create output directory -----------------------------------------------
+
+  TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+  RESULT_DIR="$RESULTS_BASE/${TIMESTAMP}"
+  mkdir -p "$RESULT_DIR"
+
+  # Write metadata for report generation
+  python3 -c "
 import json, sys
 json.dump({
     'gateway': sys.argv[1],
     'gateway_path': sys.argv[2],
     'category': sys.argv[3],
     'mode': sys.argv[4],
-    'timestamp': sys.argv[5]
-}, open(sys.argv[6], 'w'), indent=2)
-" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RESULT_DIR/metadata.json"
+    'timestamp': sys.argv[5],
+    'run': int(sys.argv[6]),
+    'total_runs': int(sys.argv[7])
+}, open(sys.argv[8], 'w'), indent=2)
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json"
 
-echo ""
-echo "Results will be saved to: $RESULT_DIR"
+  echo "Results for run $RUN: $RESULT_DIR"
 
-# ---- Warmup ------------------------------------------------------------------
+  # ---- Warmup ----------------------------------------------------------------
 
-echo ""
-echo "=== Warmup (${WARMUP_SECONDS}s) ==="
-maybe_taskset "$K6_CPUSET" k6 run \
-  -e MODE=constant \
-  -e "BENCH_OVER_TIME=${WARMUP_SECONDS}s" \
-  -e "GATEWAY_ENDPOINT=$GRAPHQL_URL" \
-  "$REPO_ROOT/k6/k6.js" >/dev/null 2>&1 || true
+  echo ""
+  echo "=== Warmup (${WARMUP_SECONDS}s) ==="
+  maybe_taskset "$K6_CPUSET" k6 run \
+    -e MODE=constant \
+    -e "BENCH_OVER_TIME=${WARMUP_SECONDS}s" \
+    -e "GATEWAY_ENDPOINT=$GRAPHQL_URL" \
+    "$REPO_ROOT/k6/k6.js" >/dev/null 2>&1 || true
 
-# ---- Start monitor -----------------------------------------------------------
+  # ---- Start monitor ---------------------------------------------------------
 
-K6_API_ADDR="127.0.0.1:6565"
+  echo ""
+  echo "=== Starting monitor ==="
+  bash "$REPO_ROOT/k6/monitor.sh" \
+    -p "$GATEWAY_PID" \
+    -k "$K6_API_ADDR" \
+    -o "$RESULT_DIR/data.csv" \
+    -i 0.2 &
+  MONITOR_PID=$!
 
-echo ""
-echo "=== Starting monitor ==="
-bash "$REPO_ROOT/k6/monitor.sh" \
-  -p "$GATEWAY_PID" \
-  -k "$K6_API_ADDR" \
-  -o "$RESULT_DIR/data.csv" \
-  -i 0.2 &
-MONITOR_PID=$!
+  # ---- Run benchmark ---------------------------------------------------------
 
-# ---- Run benchmark -----------------------------------------------------------
+  echo ""
+  echo "=== Benchmark run $RUN (mode=$LOAD_MODE, duration=${MEASURE_SECONDS}s) ==="
+  echo ""
 
-echo ""
-echo "=== Benchmark (mode=$LOAD_MODE, duration=${MEASURE_SECONDS}s) ==="
-echo ""
+  K6_ENV_ARGS=(
+    -e "MODE=$LOAD_MODE"
+    -e "BENCH_OVER_TIME=${MEASURE_SECONDS}s"
+    -e "GATEWAY_ENDPOINT=$GRAPHQL_URL"
+    -e "SUMMARY_PATH=$RESULT_DIR"
+  )
 
-K6_ENV_ARGS=(
-  -e "MODE=$LOAD_MODE"
-  -e "BENCH_OVER_TIME=${MEASURE_SECONDS}s"
-  -e "GATEWAY_ENDPOINT=$GRAPHQL_URL"
-  -e "SUMMARY_PATH=$RESULT_DIR"
-)
+  if [[ -n "${BENCH_VUS:-}" ]]; then
+    K6_ENV_ARGS+=(-e "BENCH_VUS=$BENCH_VUS")
+  fi
 
-if [[ -n "${BENCH_VUS:-}" ]]; then
-  K6_ENV_ARGS+=(-e "BENCH_VUS=$BENCH_VUS")
-fi
+  maybe_taskset "$K6_CPUSET" k6 run \
+    --address "$K6_API_ADDR" \
+    "${K6_ENV_ARGS[@]}" \
+    "$REPO_ROOT/k6/k6.js"
 
-maybe_taskset "$K6_CPUSET" k6 run \
-  --address "$K6_API_ADDR" \
-  "${K6_ENV_ARGS[@]}" \
-  "$REPO_ROOT/k6/k6.js"
+  # ---- Stop monitor for this run ---------------------------------------------
+
+  kill "$MONITOR_PID" 2>/dev/null || true
+  MONITOR_PID=""
+
+  echo ""
+  echo "=== Run $RUN complete ==="
+  echo "  Monitor CSV:  $RESULT_DIR/data.csv"
+  echo "  k6 summary:   $RESULT_DIR/k6_summary.json"
+  echo "  k6 text:      $RESULT_DIR/k6_summary.txt"
+
+done
 
 # ---- Summary -----------------------------------------------------------------
 
 echo ""
-echo "=== Benchmark complete ==="
-echo ""
-echo "Artifacts:"
-echo "  Monitor CSV:  $RESULT_DIR/data.csv"
-echo "  k6 summary:   $RESULT_DIR/k6_summary.json"
-echo "  k6 text:      $RESULT_DIR/k6_summary.txt"
-echo ""
+echo "======================================================================="
+echo "All $BENCH_RUNS runs complete."
 echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE | Duration: ${MEASURE_SECONDS}s"
+echo "Results: $RESULTS_BASE/"
+echo "======================================================================="

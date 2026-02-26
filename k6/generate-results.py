@@ -66,20 +66,47 @@ def extract_metrics(summary):
     }
 
 
+def select_median_runs(results):
+    """Group runs by gateway, pick the median run by RPS for each gateway."""
+    from collections import defaultdict
+
+    groups = defaultdict(list)
+    for r in results:
+        gateway = r["metadata"]["gateway"]
+        metrics = extract_metrics(r["summary"])
+        groups[gateway].append({
+            "result": r,
+            "metrics": metrics,
+        })
+
+    selected = []
+    for gateway, runs in groups.items():
+        # Sort by RPS and pick the middle one
+        runs.sort(key=lambda x: x["metrics"]["rps"])
+        median_idx = len(runs) // 2
+        median_run = runs[median_idx]
+        total_runs = len(runs)
+        all_rps = [r["metrics"]["rps"] for r in runs]
+        print(f"  {gateway}: {total_runs} run(s), RPS=[{', '.join(str(r) for r in all_rps)}], "
+              f"selected median RPS={median_run['metrics']['rps']}")
+        selected.append({
+            "gateway": gateway,
+            "metrics": median_run["metrics"],
+            "k6_txt": median_run["result"]["k6_txt"],
+            "summary": median_run["result"]["summary"],
+        })
+
+    return selected
+
+
 def generate_markdown(mode, results):
     """Generate results markdown for a given mode."""
     mode_results = [r for r in results if r["metadata"]["mode"] == mode]
     if not mode_results:
         return None
 
-    entries = []
-    for r in mode_results:
-        metrics = extract_metrics(r["summary"])
-        entries.append({
-            "gateway": r["metadata"]["gateway"],
-            "metrics": metrics,
-            "k6_txt": r["k6_txt"],
-        })
+    print(f"\nSelecting median runs for mode '{mode}':")
+    entries = select_median_runs(mode_results)
     entries.sort(key=lambda e: e["metrics"]["rps"], reverse=True)
 
     first = mode_results[0]["summary"]

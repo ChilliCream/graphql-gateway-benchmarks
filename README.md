@@ -64,6 +64,7 @@ Environment variables:
 | `WARMUP_SECONDS` | `15` | Warmup duration before measurement |
 | `MEASURE_SECONDS` | `60` | Benchmark measurement duration |
 | `BENCH_VUS` | `50` (constant) / `500` (ramping) | Number of virtual users |
+| `BENCH_RUNS` | `3` | Iterations per benchmark (median selected for results) |
 
 ### CPU pinning
 

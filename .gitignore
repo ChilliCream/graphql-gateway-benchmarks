@@ -45,6 +45,9 @@ TestResult.xml
 nunit-*.xml
 packages.lock.json
 
+## Python
+__pycache__/
+
 ## Node.js
 node_modules/
 npm-debug.log*
