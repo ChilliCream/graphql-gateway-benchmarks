@@ -190,17 +190,17 @@ maybe_taskset() {
 
 echo ""
 echo "=== Installing subgraph dependencies ==="
-bash "$SUBGRAPHS_DIR/install.sh"
+(cd "$SUBGRAPHS_DIR" && bash install.sh)
 
 echo ""
 echo "=== Installing gateway dependencies ==="
-bash "$GATEWAY_DIR/install.sh"
+(cd "$GATEWAY_DIR" && bash install.sh)
 
 # ---- Start subgraphs --------------------------------------------------------
 
 echo ""
 echo "=== Starting subgraphs ==="
-maybe_taskset "$SUBGRAPH_CPUSET" bash "$SUBGRAPHS_DIR/start.sh" &
+(cd "$SUBGRAPHS_DIR" && maybe_taskset "$SUBGRAPH_CPUSET" bash start.sh) &
 SUBGRAPH_PID=$!
 echo "Subgraphs PID: $SUBGRAPH_PID"
 
@@ -211,7 +211,7 @@ sleep 3
 
 echo ""
 echo "=== Starting gateway ==="
-maybe_taskset "$GATEWAY_CPUSET" bash "$GATEWAY_DIR/start.sh" &
+(cd "$GATEWAY_DIR" && maybe_taskset "$GATEWAY_CPUSET" bash start.sh) &
 GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
 
