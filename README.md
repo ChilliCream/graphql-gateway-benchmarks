@@ -4,9 +4,15 @@ Performance benchmarks comparing GraphQL gateway implementations across federati
 
 **Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Ramping Load](./RESULTS_RAMPING.md)
 
-## Gateways
+## Setup
+
+Each benchmark runs a gateway against 4 subgraphs (Accounts, Inventory, Products, Reviews) and executes a heavy nested query. The subgraph implementation differs per schema approach:
 
 ### Apollo Federation
+
+Subgraphs are built with Rust using [async-graphql](https://github.com/async-graphql/async-graphql) + [axum](https://github.com/tokio-rs/axum).
+
+**Gateways:**
 
 - [Apollo Gateway](./apollo-federation/gateways/apollo-gateway) (Node.js)
 - [Apollo Router](./apollo-federation/gateways/apollo-router) (Rust)
@@ -16,7 +22,11 @@ Performance benchmarks comparing GraphQL gateway implementations across federati
 - [Hive Gateway Router Runtime](./apollo-federation/gateways/hive-gateway-router-runtime) (Node.js)
 - [Hive Router](./apollo-federation/gateways/hive-router) (Rust)
 
-### Composite Schema
+### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
+
+Subgraphs are built with .NET using [HotChocolate](https://github.com/ChilliCream/graphql-platform).
+
+**Gateways:**
 
 - [HotChocolate](./composite-schema/gateways/hotchocolate) (.NET)
 
