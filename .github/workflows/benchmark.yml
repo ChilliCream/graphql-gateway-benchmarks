@@ -1,0 +1,69 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        gateway:
+          - path: apollo-federation/gateways/apollo-gateway
+            name: apollo-gateway
+          - path: apollo-federation/gateways/apollo-router
+            name: apollo-router
+          - path: apollo-federation/gateways/cosmo
+            name: cosmo
+          - path: apollo-federation/gateways/grafbase
+            name: grafbase
+          - path: apollo-federation/gateways/hive-gateway
+            name: hive-gateway
+          - path: apollo-federation/gateways/hive-gateway-router-runtime
+            name: hive-gateway-router-runtime
+          - path: apollo-federation/gateways/hive-router
+            name: hive-router
+          - path: composite-schema/gateways/hotchocolate
+            name: hotchocolate
+        mode:
+          - constant
+          - ramping
+    runs-on:
+      group: benchmarking-2
+    name: ${{ matrix.gateway.name }} (${{ matrix.mode }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run benchmark
+        run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.mode }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.gateway.name }}-${{ matrix.mode }}
+          path: ${{ matrix.gateway.path }}/results/
+
+  generate-results:
+    needs: benchmark
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: artifacts/
+
+      - name: Generate result documents
+        run: python3 k6/generate-results.py artifacts/ .
+
+      - name: Upload result documents
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-documents
+          path: |
+            RESULTS_CONSTANT.md
+            RESULTS_RAMPING.md

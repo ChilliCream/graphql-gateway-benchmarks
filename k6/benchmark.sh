@@ -240,6 +240,18 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULT_DIR="$OUTPUT_DIR/results/${TIMESTAMP}"
 mkdir -p "$RESULT_DIR"
 
+# Write metadata for report generation
+python3 -c "
+import json, sys
+json.dump({
+    'gateway': sys.argv[1],
+    'gateway_path': sys.argv[2],
+    'category': sys.argv[3],
+    'mode': sys.argv[4],
+    'timestamp': sys.argv[5]
+}, open(sys.argv[6], 'w'), indent=2)
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RESULT_DIR/metadata.json"
+
 echo ""
 echo "Results will be saved to: $RESULT_DIR"
 
