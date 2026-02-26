@@ -125,7 +125,8 @@ def generate_markdown(mode, results):
         "- **Composite Schema** — subgraphs are built with .NET "
         "([HotChocolate](https://github.com/ChilliCream/graphql-platform))\n"
         "\n"
-        "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS)."
+        "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS). "
+        "Each gateway is tested 3 times and the median result (by RPS) is used."
     )
 
     if mode == "constant":

@@ -5,7 +5,7 @@ Each benchmark runs a GraphQL gateway with 4 subgraphs and executes a heavy nest
 - **Apollo Federation** — subgraphs are built with Rust ([async-graphql](https://github.com/async-graphql/async-graphql) + axum)
 - **Composite Schema** — subgraphs are built with .NET ([HotChocolate](https://github.com/ChilliCream/graphql-platform))
 
-Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS).
+Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS). Each gateway is tested 3 times and the median result (by RPS) is used.
 
 This scenario executes a constant load of **50 VUs** over **60s**.
 
