@@ -3,7 +3,7 @@ using System.Net;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
-    .AddHttpClient("Fusion")
+    .AddHttpClient("fusion")
     .ConfigurePrimaryHttpMessageHandler(
         () => new SocketsHttpHandler
         {
