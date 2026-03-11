@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 [assembly: Module("ProductTypes")]
 
+ThreadPool.SetMinThreads(512, 512);
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.ConfigureKestrel(options =>

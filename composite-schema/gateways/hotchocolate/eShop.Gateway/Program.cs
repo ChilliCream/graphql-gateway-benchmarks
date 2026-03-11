@@ -1,5 +1,7 @@
 using System.Net;
 
+ThreadPool.SetMinThreads(1024, 1024);
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
@@ -7,7 +9,7 @@ builder.Services
     .ConfigurePrimaryHttpMessageHandler(
         () => new SocketsHttpHandler
         {
-            MaxConnectionsPerServer = 256,
+            MaxConnectionsPerServer = 512,
             EnableMultipleHttp2Connections = true
         })
     .ConfigureHttpClient(
