@@ -1,15 +1,8 @@
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-
 [assembly: Module("ProductTypes")]
 
-ThreadPool.SetMinThreads(512, 512);
+ThreadPool.SetMinThreads(256, 256);
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ConfigureEndpointDefaults(o => o.Protocols = HttpProtocols.Http2);
-});
 
 builder
     .AddGraphQL("products-api", disableDefaultSecurity: true)

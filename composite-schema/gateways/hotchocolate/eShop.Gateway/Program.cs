@@ -1,23 +1,9 @@
-using System.Net;
-
-ThreadPool.SetMinThreads(1024, 1024);
+ThreadPool.SetMinThreads(256, 256);
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
-    .AddHttpClient("fusion")
-    .ConfigurePrimaryHttpMessageHandler(
-        () => new SocketsHttpHandler
-        {
-            MaxConnectionsPerServer = 512,
-            EnableMultipleHttp2Connections = true
-        })
-    .ConfigureHttpClient(
-        client =>
-        {
-            client.DefaultRequestVersion = HttpVersion.Version20;
-            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        });
+    .AddHttpClient("fusion");
 
 builder
     .AddGraphQLGateway()
