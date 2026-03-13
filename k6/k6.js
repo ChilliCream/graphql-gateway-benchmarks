@@ -165,14 +165,17 @@ function handleBenchmarkSummary(data, additionalContext = {}) {
   return out;
 }
 
+let _reqCounter = 0;
+
 function sendGraphQLRequest() {
+  const reqId = typeof __ITER !== "undefined" ? `${__VU}-${__ITER}` : `s-${_reqCounter++}`;
   const res = http.post(
     endpoint,
     graphqlRequest.payload,
     {
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer bench-${__VU}-${__ITER}`,
+        "Authorization": `Bearer bench-${reqId}`,
       },
     }
   );

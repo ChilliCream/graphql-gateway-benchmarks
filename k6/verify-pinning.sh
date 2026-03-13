@@ -11,15 +11,26 @@ fi
 
 echo "=== CPU Affinity Verification ==="
 
+# Check affinity of a process and its first child (the taskset'd process)
+check_affinity() {
+  local label="$1"
+  local pid="$2"
+  # The captured PID is the outer subshell; the actual pinned process is a child
+  local child
+  child=$(pgrep -P "$pid" 2>/dev/null | head -1)
+  local check_pid="${child:-$pid}"
+  echo "  ${label} (PID $check_pid): $(taskset -cp "$check_pid" 2>/dev/null | awk -F': ' '{print $2}')"
+}
+
 GATEWAY_PID="${1:-}"
 SUBGRAPH_PID="${2:-}"
 
 if [[ -n "$GATEWAY_PID" ]]; then
-  echo "  Gateway (PID $GATEWAY_PID): $(taskset -cp "$GATEWAY_PID" 2>/dev/null | awk -F': ' '{print $2}')"
+  check_affinity "Gateway" "$GATEWAY_PID"
 fi
 
 if [[ -n "$SUBGRAPH_PID" ]]; then
-  echo "  Subgraph (PID $SUBGRAPH_PID): $(taskset -cp "$SUBGRAPH_PID" 2>/dev/null | awk -F': ' '{print $2}')"
+  check_affinity "Subgraph" "$SUBGRAPH_PID"
 fi
 
 # Check for stray processes on benchmark cores
