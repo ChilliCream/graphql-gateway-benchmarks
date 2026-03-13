@@ -2,4 +2,4 @@
 set -Eeuo pipefail
 
 # https://github.com/apollographql/router/releases
-curl -sSL https://router.apollo.dev/download/nix/v2.6.0 | sh
+curl -sSL https://router.apollo.dev/download/nix/v2.12.0 | sh
