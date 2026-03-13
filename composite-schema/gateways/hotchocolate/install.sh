@@ -45,4 +45,5 @@ done
 echo "Building HotChocolate gateway..."
 cd "$SCRIPT_DIR/eShop.Gateway" && dotnet build -c Release --nologo -v quiet
 
+echo "$LATEST_PREVIEW" > version.txt
 echo "HotChocolate gateway build complete (version: $LATEST_PREVIEW)."

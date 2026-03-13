@@ -15,3 +15,4 @@ else
 fi
 
 npm i
+node -e "const p=require('./package.json'); console.log(p.dependencies['@graphql-hive/gateway'])" > version.txt
