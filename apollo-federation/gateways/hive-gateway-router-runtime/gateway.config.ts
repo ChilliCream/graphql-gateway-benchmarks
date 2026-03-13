@@ -3,11 +3,11 @@ import { unifiedGraphHandler } from "@graphql-hive/router-runtime";
 
 export const gatewayConfig = defineConfig({
   unifiedGraphHandler,
-  transportEntries: {
-    "*.http": {
-      options: {
-        deduplicateInflightRequests: false,
-      },
+  propagateHeaders: {
+    fromClientToSubgraphs({ request }) {
+      return {
+        authorization: request.headers.get("authorization"),
+      };
     },
   },
 });

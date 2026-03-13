@@ -169,7 +169,12 @@ function sendGraphQLRequest() {
   const res = http.post(
     endpoint,
     graphqlRequest.payload,
-    graphqlRequest.params
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer bench-${__VU}-${__ITER}`,
+      },
+    }
   );
 
   return res;

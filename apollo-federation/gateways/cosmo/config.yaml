@@ -1,0 +1,5 @@
+headers:
+  all:
+    request:
+      - op: propagate
+        named: Authorization

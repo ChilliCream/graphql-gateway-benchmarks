@@ -7,7 +7,6 @@ exec env -i LOG_LEVEL=fatal \
     METRICS_OTLP_ENABLED=false \
     GRAPHQL_METRICS_ENABLED=false \
     PROMETHEUS_ENABLED=false \
-    ENGINE_ENABLE_SINGLE_FLIGHT=false \
-    ENGINE_ENABLE_INBOUND_REQUEST_DEDUPLICATION=false \
     ROUTER_CONFIG_PATH=config.json \
+    CONFIG_PATH=config.yaml \
     ./cosmo > ./gateway_log.txt 2>&1

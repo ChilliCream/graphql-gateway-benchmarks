@@ -1,2 +1,3 @@
-[traffic_shaping]
-inflight_deduplication = false
+[[headers]]
+rule = "forward"
+name = "Authorization"

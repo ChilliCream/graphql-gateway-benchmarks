@@ -1,6 +1,11 @@
 supergraph:
     path: /graphql
     listen: 0.0.0.0:4000
+headers:
+    all:
+        request:
+            - propagate:
+                named: Authorization
 traffic_shaping:
     all:
         deduplicate_query: true
