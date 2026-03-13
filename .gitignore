@@ -12,6 +12,7 @@ Thumbs.db
 gateway_log.txt
 error.log
 data.csv
+version.txt
 
 ## .NET
 [Dd]ebug/

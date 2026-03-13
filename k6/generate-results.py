@@ -163,11 +163,11 @@ def generate_markdown(mode, results):
 
     # Table header
     lines.append(
-        "| Gateway                     | RPS ⬇️ |        Requests        "
+        "| Gateway                                        | RPS ⬇️ |        Requests        "
         "|        Duration        | Notes                                    |"
     )
     lines.append(
-        "| :-------------------------- | :----: | :--------------------: "
+        "| :--------------------------------------------- | :----: | :--------------------: "
         "| :--------------------: | :--------------------------------------- |"
     )
 
@@ -178,7 +178,7 @@ def generate_markdown(mode, results):
         reqs = f"{m['total']} total, {m['failed']} failed"
         dur = f"avg: {m['avg_ms']:.0f}ms, p95: {m['p95_ms']:.0f}ms"
         notes = m["notes"]
-        lines.append(f"| {gw:<27} | {rps:>4}  | {reqs:^22} | {dur:^22} | {notes:<40} |")
+        lines.append(f"| {gw:<46} | {rps:>4}  | {reqs:^22} | {dur:^22} | {notes:<40} |")
 
     lines.append("")
     lines.append("")
