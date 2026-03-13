@@ -65,7 +65,7 @@ Examples:
 2. Starts subgraphs in the background
 3. Starts the gateway and waits for it to become healthy
 4. Runs a warmup phase (15s by default)
-5. Starts a CPU/memory monitor, then runs the k6 benchmark (60s by default)
+5. Starts a CPU/memory monitor, then runs the k6 benchmark (120s by default)
 6. Saves results and cleans up all processes
 
 ### Configuration
@@ -75,9 +75,9 @@ Environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `WARMUP_SECONDS` | `15` | Warmup duration before measurement |
-| `MEASURE_SECONDS` | `60` | Benchmark measurement duration |
+| `MEASURE_SECONDS` | `120` | Benchmark measurement duration |
 | `BENCH_VUS` | `50` (constant) / `500` (ramping) | Number of virtual users |
-| `BENCH_RUNS` | `3` | Iterations per benchmark (median selected for results) |
+| `BENCH_RUNS` | `10` | Iterations per benchmark (median selected for results) |
 
 ### CPU pinning
 

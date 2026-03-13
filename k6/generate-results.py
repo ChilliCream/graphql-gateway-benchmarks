@@ -132,7 +132,7 @@ def generate_markdown(mode, results):
         "or Rust ([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
         "\n"
         "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS). "
-        "Each gateway is tested 3 times and the median result (by RPS) is used."
+        "Each gateway is tested 10 times (120s each) and the median result (by RPS) is used."
     )
 
     if mode == "constant":

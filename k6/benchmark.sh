@@ -15,9 +15,9 @@ set -Eeuo pipefail
 #
 # Environment variables:
 #   WARMUP_SECONDS   Warmup duration before measurement (default: 15)
-#   MEASURE_SECONDS  Benchmark measurement duration (default: 60)
+#   MEASURE_SECONDS  Benchmark measurement duration (default: 120)
 #   BENCH_VUS        Virtual users (passed through to k6.js)
-#   BENCH_RUNS       Number of iterations per benchmark (default: 3, median used)
+#   BENCH_RUNS       Number of iterations per benchmark (default: 10, median used)
 # =============================================================================
 
 # ---- Args -------------------------------------------------------------------
@@ -43,8 +43,8 @@ for arg in "${@:2}"; do
 done
 
 WARMUP_SECONDS="${WARMUP_SECONDS:-15}"
-MEASURE_SECONDS="${MEASURE_SECONDS:-60}"
-BENCH_RUNS="${BENCH_RUNS:-3}"
+MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
+BENCH_RUNS="${BENCH_RUNS:-10}"
 
 # ---- Paths ------------------------------------------------------------------
 
@@ -148,6 +148,7 @@ fi
 
 PROFILES_FILE="$REPO_ROOT/profiles.json"
 USE_PINNING=false
+SYSTEM_CPUSET=""
 K6_CPUSET=""
 GATEWAY_CPUSET=""
 SUBGRAPH_CPUSET=""
@@ -168,12 +169,12 @@ if [[ -f "$PROFILES_FILE" ]]; then
   fi
 
   # Extract CPU sets
-  read -r K6_CPUSET GATEWAY_CPUSET SUBGRAPH_CPUSET < <(
+  read -r SYSTEM_CPUSET K6_CPUSET GATEWAY_CPUSET SUBGRAPH_CPUSET < <(
     python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 p = d.get('$PROFILE_KEY', {}).get('$LOAD_MODE', {})
-print(p.get('k6', ''), p.get('gateway', ''), p.get('subgraphs', ''))
+print(p.get('system', ''), p.get('k6', ''), p.get('gateway', ''), p.get('subgraphs', ''))
 " < "$PROFILES_FILE"
   )
 
@@ -181,12 +182,19 @@ print(p.get('k6', ''), p.get('gateway', ''), p.get('subgraphs', ''))
   if command -v taskset &>/dev/null; then
     USE_PINNING=true
     echo "CPU pinning enabled (profile=$PROFILE_KEY, mode=$LOAD_MODE)"
+    echo "  system:    cores $SYSTEM_CPUSET"
     echo "  k6:        cores $K6_CPUSET"
     echo "  gateway:   cores $GATEWAY_CPUSET"
     echo "  subgraphs: cores $SUBGRAPH_CPUSET"
   else
     echo "Note: taskset not available — CPU pinning disabled"
   fi
+fi
+
+# ---- System process isolation ------------------------------------------------
+
+if [[ "$USE_PINNING" == true && -n "$SYSTEM_CPUSET" ]]; then
+  bash "$REPO_ROOT/k6/isolate-system-cpus.sh" "$SYSTEM_CPUSET"
 fi
 
 maybe_taskset() {
@@ -267,6 +275,12 @@ done
 if [[ $ELAPSED -ge $TIMEOUT ]]; then
   echo "Error: gateway did not become healthy within ${TIMEOUT}s"
   exit 1
+fi
+
+# ---- Verify CPU pinning ------------------------------------------------------
+
+if [[ "$USE_PINNING" == true ]]; then
+  bash "$REPO_ROOT/k6/verify-pinning.sh" "$GATEWAY_PID" "$SUBGRAPH_PID"
 fi
 
 # ---- Run iterations ----------------------------------------------------------
@@ -376,3 +390,44 @@ echo "All $BENCH_RUNS runs complete."
 echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE | Duration: ${MEASURE_SECONDS}s"
 echo "Results: $RESULTS_BASE/"
 echo "======================================================================="
+
+# ---- Run statistics ----------------------------------------------------------
+
+if [[ "$BENCH_RUNS" -gt 1 ]]; then
+  echo ""
+  echo "=== Run Statistics ==="
+
+  # Collect RPS from all k6_summary.json files
+  RPS_VALUES=()
+  for result_dir in "$RESULTS_BASE"/*/; do
+    if [[ -f "$result_dir/k6_summary.json" ]]; then
+      RPS=$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(d.get('metrics',{}).get('http_reqs',{}).get('values',{}).get('rate',0))
+" "$result_dir/k6_summary.json")
+      RPS_VALUES+=("$RPS")
+    fi
+  done
+
+  if [[ ${#RPS_VALUES[@]} -gt 0 ]]; then
+    python3 -c "
+import sys, statistics
+vals = [float(x) for x in sys.argv[1:]]
+vals.sort()
+n = len(vals)
+median = vals[n//2] if n % 2 == 1 else (vals[n//2-1] + vals[n//2]) / 2
+mean = statistics.mean(vals)
+stdev = statistics.stdev(vals) if n > 1 else 0
+cv = (stdev / mean * 100) if mean > 0 else 0
+print(f'  Runs:   {n}')
+print(f'  RPS:    {\" → \".join(f\"{v:.0f}\" for v in vals)}')
+print(f'  Median: {median:.0f} req/s')
+print(f'  Mean:   {mean:.0f} req/s')
+print(f'  Stddev: {stdev:.1f}')
+print(f'  CV:     {cv:.2f}%')
+if cv > 3:
+    print(f'  ⚠️  CV > 3% — results may be unreliable')
+" "${RPS_VALUES[@]}"
+  fi
+fi

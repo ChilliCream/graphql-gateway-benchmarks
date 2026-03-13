@@ -2,6 +2,19 @@ name: Benchmark
 
 on:
   workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Number of benchmark runs per gateway'
+        required: false
+        default: '10'
+      duration:
+        description: 'Duration per run in seconds'
+        required: false
+        default: '120'
+
+concurrency:
+  group: gateway-benchmarks
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -38,6 +51,9 @@ jobs:
     runs-on:
       group: benchmarking-2
     name: ${{ matrix.gateway.name }} (${{ matrix.mode }})
+    env:
+      BENCH_RUNS: ${{ inputs.runs || '10' }}
+      MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
       - uses: actions/checkout@v4
 
