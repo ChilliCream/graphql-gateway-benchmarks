@@ -195,6 +195,10 @@ fi
 
 if [[ "$USE_PINNING" == true && -n "$SYSTEM_CPUSET" ]]; then
   bash "$REPO_ROOT/k6/isolate-system-cpus.sh" "$SYSTEM_CPUSET"
+  # Move benchmark process back to root cgroup so child processes can use all cores
+  if [[ -d /sys/fs/cgroup/system_tasks ]]; then
+    echo $$ | sudo tee /sys/fs/cgroup/cgroup.procs > /dev/null 2>&1 || true
+  fi
 fi
 
 maybe_taskset() {
