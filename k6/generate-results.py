@@ -67,8 +67,12 @@ def extract_metrics(summary):
 
 
 def get_display_name(metadata):
-    """Get display name from metadata, falling back to gateway name."""
-    return metadata.get("display_name", metadata["gateway"])
+    """Get display name from metadata, with version if available."""
+    name = metadata.get("display_name", metadata["gateway"])
+    version = metadata.get("version", "")
+    if version:
+        return f"{name} ({version})"
+    return name
 
 
 def select_median_runs(results):

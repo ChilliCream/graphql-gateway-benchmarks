@@ -301,6 +301,13 @@ fi
 K6_API_ADDR="127.0.0.1:6565"
 RESULTS_BASE="$GATEWAY_DIR/results"
 
+# Read gateway version if available
+GATEWAY_VERSION=""
+if [[ -f "$GATEWAY_DIR/version.txt" ]]; then
+  GATEWAY_VERSION="$(cat "$GATEWAY_DIR/version.txt" | tr -d '[:space:]')"
+  echo "Gateway version: $GATEWAY_VERSION"
+fi
+
 for RUN in $(seq 1 "$BENCH_RUNS"); do
   echo ""
   echo "######################################################################"
@@ -324,9 +331,10 @@ json.dump({
     'timestamp': sys.argv[5],
     'run': int(sys.argv[6]),
     'total_runs': int(sys.argv[7]),
-    'display_name': sys.argv[9]
+    'display_name': sys.argv[9],
+    'version': sys.argv[10]
 }, open(sys.argv[8], 'w'), indent=2)
-" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME"
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION"
 
   echo "Results for run $RUN: $RESULT_DIR"
 
