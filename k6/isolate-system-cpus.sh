@@ -20,12 +20,10 @@ fi
 
 echo "Isolating system processes to core(s): $CPUSET"
 
-if ! sudo -n true 2>/dev/null; then
-  echo "System CPU isolation: skipped (passwordless sudo not available)"
+if ! sudo -n mkdir -p /sys/fs/cgroup/system_tasks 2>/dev/null; then
+  echo "System CPU isolation: skipped (sudo not permitted for cgroup operations)"
   exit 0
 fi
-
-sudo mkdir -p /sys/fs/cgroup/system_tasks
 echo "$CPUSET" | sudo tee /sys/fs/cgroup/system_tasks/cpuset.cpus > /dev/null
 echo "0" | sudo tee /sys/fs/cgroup/system_tasks/cpuset.mems > /dev/null
 
