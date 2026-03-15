@@ -353,6 +353,18 @@ if [[ "$USE_PINNING" == true ]]; then
   bash "$REPO_ROOT/k6/verify-pinning.sh" "$GATEWAY_PID" "$SUBGRAPH_PID"
 fi
 
+# ---- Helper: gateway RSS (KB) ------------------------------------------------
+
+gateway_rss_kb() {
+  local pids
+  pids="$GATEWAY_PID $(pgrep -P "$GATEWAY_PID" 2>/dev/null || true)"
+  local ps_args=()
+  for pid in $pids; do
+    ps_args+=(-p "$pid")
+  done
+  ps "${ps_args[@]}" -o rss= 2>/dev/null | awk '{sum+=$1} END {print sum+0}'
+}
+
 # ---- Run iterations ----------------------------------------------------------
 
 GATEWAY_NAME="$(basename "$GATEWAY_REL")"
@@ -373,6 +385,11 @@ if [[ -f "$GATEWAY_DIR/version.txt" ]]; then
   GATEWAY_VERSION="$(cat "$GATEWAY_DIR/version.txt" | tr -d '[:space:]')"
   echo "Gateway version: $GATEWAY_VERSION"
 fi
+
+# ---- Capture idle memory -----------------------------------------------------
+
+IDLE_RSS_KB=$(gateway_rss_kb)
+echo "Gateway idle RSS: $((IDLE_RSS_KB / 1024)) MB"
 
 # ---- Warmup run (full duration, discarded) ---------------------------------
 
@@ -466,11 +483,27 @@ json.dump({
   kill "$MONITOR_PID" 2>/dev/null || true
   MONITOR_PID=""
 
+  # ---- Memory stats for this run ----------------------------------------------
+
+  END_RSS_KB=$(gateway_rss_kb)
+  PEAK_RSS_KB=$(awk -F, 'NR>1 && $7+0 > max {max=$7+0} END {print max+0}' "$RESULT_DIR/data.csv")
+
+  # Persist memory stats for report generation
+  python3 -c "
+import json, sys
+json.dump({
+    'idle_rss_kb': int(sys.argv[1]),
+    'peak_rss_kb': int(sys.argv[2]),
+    'end_rss_kb': int(sys.argv[3])
+}, open(sys.argv[4], 'w'), indent=2)
+" "$IDLE_RSS_KB" "$PEAK_RSS_KB" "$END_RSS_KB" "$RESULT_DIR/memory.json"
+
   echo ""
   echo "=== Run $RUN complete ==="
   echo "  Monitor CSV:  $RESULT_DIR/data.csv"
   echo "  k6 summary:   $RESULT_DIR/k6_summary.json"
   echo "  k6 text:      $RESULT_DIR/k6_summary.txt"
+  echo "  Memory:       idle=$((IDLE_RSS_KB / 1024))MB  peak=$((PEAK_RSS_KB / 1024))MB  end=$((END_RSS_KB / 1024))MB"
 
 done
 
