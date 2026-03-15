@@ -48,6 +48,22 @@ done
 MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
 BENCH_RUNS="${BENCH_RUNS:-10}"
 
+# ---- Machine info ------------------------------------------------------------
+
+echo ""
+echo "=== Machine Info ==="
+echo "  Hostname: $(hostname)"
+echo "  OS:       $(uname -sr)"
+if [[ "$(uname -s)" == "Linux" ]]; then
+  echo "  CPU:      $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
+  echo "  Cores:    $(nproc) logical ($(grep -c '^processor' /proc/cpuinfo) CPUs)"
+  echo "  RAM:      $(awk '/MemTotal/ {printf "%.0f GB", $2/1024/1024}' /proc/meminfo)"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "  CPU:      $(sysctl -n machdep.cpu.brand_string)"
+  echo "  Cores:    $(sysctl -n hw.logicalcpu) logical"
+  echo "  RAM:      $(( $(sysctl -n hw.memsize) / 1024/1024/1024 )) GB"
+fi
+
 # ---- Paths ------------------------------------------------------------------
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
