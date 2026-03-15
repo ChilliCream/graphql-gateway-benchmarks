@@ -121,7 +121,7 @@ fi
 echo ""
 echo "=== Cleaning up stale processes ==="
 STALE_FOUND=false
-for pattern in "k6 run" "./router " "npm start" "npx hive-gateway" "dotnet.*eShop" "./cosmo" "./grafbase"; do
+for pattern in "k6 run" "./router " "npm start" "npx hive-gateway" "dotnet.*eShop" "./cosmo" "./grafbase" "/subgraphs$"; do
   while IFS= read -r line; do
     pid=$(echo "$line" | awk '{print $1}')
     if [[ -n "$pid" ]]; then
