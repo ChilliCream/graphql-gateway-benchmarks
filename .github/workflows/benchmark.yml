@@ -49,7 +49,7 @@ jobs:
           - constant
           - ramping
     runs-on:
-      group: benchmarking-2
+      group: benchmarking-1
     name: ${{ matrix.gateway.name }} (${{ matrix.mode }})
     env:
       BENCH_RUNS: ${{ inputs.runs || '10' }}
