@@ -90,10 +90,12 @@ def select_median_runs(results):
         name = get_gateway_name(r["metadata"])
         version = get_version(r["metadata"])
         rps = extract_rps(r["summary"])
+        metrics = extract_metrics(r["summary"])
         groups[name].append({
             "result": r,
             "rps": rps,
             "version": version,
+            "metrics": metrics,
         })
 
     selected = []
@@ -116,6 +118,26 @@ def select_median_runs(results):
 
         version = runs[0]["version"]
 
+        # Aggregate errors across ALL runs, not just the median
+        total_failed = sum(r["metrics"]["failed"] for r in runs)
+        total_sr_fails = sum(
+            int(r["result"]["summary"].get("metrics", {})
+                .get("success_rate", {}).get("values", {}).get("fails", 0))
+            for r in runs
+        )
+        runs_with_errors = sum(
+            1 for r in runs
+            if r["metrics"]["failed"] > 0 or
+            int(r["result"]["summary"].get("metrics", {})
+                .get("success_rate", {}).get("values", {}).get("fails", 0)) > 0
+        )
+
+        notes = ""
+        if total_sr_fails > 0:
+            notes = f"non-compatible response ({total_sr_fails} across {runs_with_errors}/{n} runs)"
+        elif total_failed > 0:
+            notes = f"{total_failed} failed requests across {runs_with_errors}/{n} runs"
+
         print(f"  {gateway}: {n} run(s), RPS=[{', '.join(str(r) for r in all_rps)}], "
               f"median={median_rps}, best={best_rps}, worst={worst_rps}, CV={cv_pct}%")
 
@@ -126,7 +148,8 @@ def select_median_runs(results):
             "best_rps": best_rps,
             "worst_rps": worst_rps,
             "cv_pct": cv_pct,
-            "metrics": extract_metrics(median_run["result"]["summary"]),
+            "notes": notes,
+            "metrics": median_run["metrics"],
             "k6_txt": median_run["result"]["k6_txt"],
             "summary": median_run["result"]["summary"],
         })
@@ -191,19 +214,20 @@ def generate_markdown(mode, results):
 
     # Table header
     lines.append(
-        "| Gateway | Version | Median RPS | Best RPS | Worst RPS | CV% |"
+        "| Gateway | Version | Median RPS | Best RPS | Worst RPS | CV% | Notes |"
     )
     lines.append(
-        "| :------ | :------ | ---------: | -------: | --------: | --: |"
+        "| :------ | :------ | ---------: | -------: | --------: | --: | :---- |"
     )
 
     for entry in entries:
         gw = entry["gateway"]
         ver = entry["version"]
+        notes = entry.get("notes", "")
         lines.append(
             f"| {gw} | {ver} | {entry['median_rps']:,} | "
             f"{entry['best_rps']:,} | {entry['worst_rps']:,} | "
-            f"{entry['cv_pct']:.1f}% |"
+            f"{entry['cv_pct']:.1f}% | {notes} |"
         )
 
     lines.append("")
