@@ -357,9 +357,7 @@ fi
 
 echo ""
 echo "######################################################################"
-echo "# Warmup run (${MEASURE_SECONDS}s, discarded)"
-echo "######################################################################"
-echo ""
+echo "# Started  ${MEASURE_SECONDS}s warmup                                               #"
 
 K6_WARMUP_ARGS=(
   -e "MODE=$LOAD_MODE"
@@ -374,8 +372,8 @@ maybe_taskset "$K6_CPUSET" k6 run \
   "${K6_WARMUP_ARGS[@]}" \
   "$REPO_ROOT/k6/k6.js" >/dev/null 2>&1 || true
 
-echo ""
-echo "=== Warmup complete (results discarded) ==="
+echo "# Complete ${MEASURE_SECONDS}s warmup                                               #"
+echo "######################################################################"
 
 # ---- Measured runs -----------------------------------------------------------
 
