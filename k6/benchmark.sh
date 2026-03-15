@@ -245,6 +245,10 @@ echo ""
 echo "=== Installing gateway dependencies ==="
 (cd "$GATEWAY_DIR" && bash install.sh)
 
+# Source nvm/cargo if they were installed during install steps, so start.sh can find them
+[[ -s "$HOME/.nvm/nvm.sh" ]] && . "$HOME/.nvm/nvm.sh" || true
+[[ -s "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env" || true
+
 # ---- Start subgraphs --------------------------------------------------------
 
 echo ""
