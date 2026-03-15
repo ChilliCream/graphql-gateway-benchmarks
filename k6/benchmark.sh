@@ -163,6 +163,8 @@ if [[ -f "$PROFILES_FILE" ]]; then
     *)      CORES=0 ;;
   esac
 
+  echo "Detected $CORES logical cores"
+
   # Find nearest profile key (8 or 16)
   if [[ $CORES -ge 16 ]]; then
     PROFILE_KEY="16"
@@ -190,6 +192,22 @@ print(p.get('system', ''), p.get('k6', ''), p.get('gateway', ''), p.get('subgrap
     echo "  subgraphs: cores $SUBGRAPH_CPUSET"
   else
     echo "Note: taskset not available — CPU pinning disabled"
+  fi
+fi
+
+# ---- CPU frequency stabilization ---------------------------------------------
+# Disable frequency boost and set governor to "performance" for consistent results.
+
+if [[ "$(uname -s)" == "Linux" ]]; then
+  if [[ -f /sys/devices/system/cpu/cpufreq/boost ]]; then
+    echo 0 | sudo -n tee /sys/devices/system/cpu/cpufreq/boost > /dev/null 2>&1 \
+      && echo "CPU frequency boost: disabled" \
+      || echo "CPU frequency boost: could not disable (no sudo)"
+  fi
+  if ls /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor &>/dev/null; then
+    echo performance | sudo -n tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null 2>&1 \
+      && echo "CPU governor: set to performance" \
+      || echo "CPU governor: could not set (no sudo)"
   fi
 fi
 

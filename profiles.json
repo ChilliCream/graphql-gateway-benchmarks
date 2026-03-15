@@ -15,16 +15,16 @@
   },
   "16": {
     "constant": {
-      "system": "0",
-      "k6": "1",
-      "gateway": "2-4",
-      "subgraphs": "5-15"
+      "system": "0,8",
+      "k6": "1,9",
+      "gateway": "2-3,10-11",
+      "subgraphs": "4-7,12-15"
     },
     "ramping": {
-      "system": "0",
-      "k6": "1",
-      "gateway": "2-5",
-      "subgraphs": "6-15"
+      "system": "0,8",
+      "k6": "1,9",
+      "gateway": "2-3,10-11",
+      "subgraphs": "4-7,12-15"
     }
   }
 }
