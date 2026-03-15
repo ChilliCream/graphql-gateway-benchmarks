@@ -56,7 +56,7 @@ echo "  Hostname: $(hostname)"
 echo "  OS:       $(uname -sr)"
 if [[ "$(uname -s)" == "Linux" ]]; then
   echo "  CPU:      $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
-  echo "  Cores:    $(nproc) logical ($(grep -c '^processor' /proc/cpuinfo) CPUs)"
+  echo "  Cores:    $(nproc --all) logical ($(grep -c '^processor' /proc/cpuinfo) CPUs)"
   echo "  RAM:      $(awk '/MemTotal/ {printf "%.0f GB", $2/1024/1024}' /proc/meminfo)"
 elif [[ "$(uname -s)" == "Darwin" ]]; then
   echo "  CPU:      $(sysctl -n machdep.cpu.brand_string)"
@@ -175,7 +175,7 @@ if [[ -f "$PROFILES_FILE" ]]; then
   # Detect core count
   case "$(uname -s)" in
     Darwin) CORES=$(sysctl -n hw.logicalcpu) ;;
-    Linux)  CORES=$(nproc) ;;
+    Linux)  CORES=$(nproc --all) ;;
     *)      CORES=0 ;;
   esac
 
@@ -271,17 +271,22 @@ fi
 
 # ---- Install dependencies ---------------------------------------------------
 
+# Helper: source tool environments that may have been installed in subshells
+source_tool_envs() {
+  [[ -s "$HOME/.nvm/nvm.sh" ]] && . "$HOME/.nvm/nvm.sh" || true
+  [[ -s "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env" || true
+  [[ -d "$HOME/.dotnet" ]] && export PATH="$HOME/.dotnet:$PATH" || true
+}
+
 echo ""
 echo "=== Installing subgraph dependencies ==="
 (cd "$SUBGRAPHS_DIR" && bash install.sh)
+source_tool_envs
 
 echo ""
 echo "=== Installing gateway dependencies ==="
 (cd "$GATEWAY_DIR" && bash install.sh)
-
-# Source nvm/cargo if they were installed during install steps, so start.sh can find them
-[[ -s "$HOME/.nvm/nvm.sh" ]] && . "$HOME/.nvm/nvm.sh" || true
-[[ -s "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env" || true
+source_tool_envs
 
 # ---- Start subgraphs --------------------------------------------------------
 
