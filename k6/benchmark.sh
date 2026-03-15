@@ -115,6 +115,27 @@ if ! command -v k6 &>/dev/null; then
   esac
 fi
 
+# ---- Kill stale processes from previous runs ---------------------------------
+# On shared runners, processes from a prior benchmark job may still be alive.
+
+echo ""
+echo "=== Cleaning up stale processes ==="
+STALE_FOUND=false
+for pattern in "k6 run" "./router " "npm start" "npx hive-gateway" "dotnet.*eShop" "./cosmo" "./grafbase"; do
+  while IFS= read -r line; do
+    pid=$(echo "$line" | awk '{print $1}')
+    if [[ -n "$pid" ]]; then
+      STALE_FOUND=true
+      echo "  Killing stale process $pid: $(echo "$line" | awk '{for(i=2;i<=NF;i++) printf "%s ", $i; print ""}')"
+      kill "$pid" 2>/dev/null || true
+    fi
+  done < <(pgrep -af "$pattern" 2>/dev/null | grep -v "$$" | grep -v grep || true)
+done
+if [[ "$STALE_FOUND" == false ]]; then
+  echo "  No stale processes found"
+fi
+sleep 1
+
 # ---- Cleanup trap ------------------------------------------------------------
 
 SUBGRAPH_PID=""

@@ -62,6 +62,21 @@ jobs:
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
 
+      - name: Kill gateway and subgraph processes
+        if: always()
+        run: |
+          echo "Killing leftover gateway/subgraph processes..."
+          pkill -f './router ' || true
+          pkill -f './cosmo' || true
+          pkill -f './grafbase' || true
+          pkill -f 'npm start' || true
+          pkill -f 'npx hive-gateway' || true
+          pkill -f 'dotnet.*eShop' || true
+          pkill -f 'k6 run' || true
+          pkill -f 'subgraphs' || true
+          sleep 2
+          echo "Done."
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
