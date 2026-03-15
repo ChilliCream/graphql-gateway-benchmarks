@@ -14,10 +14,13 @@ set -Eeuo pipefail
 #   ./k6/benchmark.sh apollo-federation/gateways/cosmo ramping
 #
 # Environment variables:
-#   WARMUP_SECONDS   Warmup duration before measurement (default: 15)
 #   MEASURE_SECONDS  Benchmark measurement duration (default: 120)
 #   BENCH_VUS        Virtual users (passed through to k6.js)
-#   BENCH_RUNS       Number of iterations per benchmark (default: 10, median used)
+#   BENCH_RUNS       Number of measured iterations per benchmark (default: 10, median used)
+#
+# Methodology:
+#   11 runs total: 1 full-duration warmup (discarded) + 10 measured runs.
+#   The median of the 10 measured runs is the primary result.
 # =============================================================================
 
 # ---- Args -------------------------------------------------------------------
@@ -42,7 +45,6 @@ for arg in "${@:2}"; do
   fi
 done
 
-WARMUP_SECONDS="${WARMUP_SECONDS:-15}"
 MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
 BENCH_RUNS="${BENCH_RUNS:-10}"
 
@@ -308,10 +310,36 @@ if [[ -f "$GATEWAY_DIR/version.txt" ]]; then
   echo "Gateway version: $GATEWAY_VERSION"
 fi
 
+# ---- Warmup run (full duration, discarded) ---------------------------------
+
+echo ""
+echo "######################################################################"
+echo "# Warmup run (${MEASURE_SECONDS}s, discarded)"
+echo "######################################################################"
+echo ""
+
+K6_WARMUP_ARGS=(
+  -e "MODE=$LOAD_MODE"
+  -e "BENCH_OVER_TIME=${MEASURE_SECONDS}s"
+  -e "GATEWAY_ENDPOINT=$GRAPHQL_URL"
+)
+if [[ -n "${BENCH_VUS:-}" ]]; then
+  K6_WARMUP_ARGS+=(-e "BENCH_VUS=$BENCH_VUS")
+fi
+
+maybe_taskset "$K6_CPUSET" k6 run \
+  "${K6_WARMUP_ARGS[@]}" \
+  "$REPO_ROOT/k6/k6.js" >/dev/null 2>&1 || true
+
+echo ""
+echo "=== Warmup complete (results discarded) ==="
+
+# ---- Measured runs -----------------------------------------------------------
+
 for RUN in $(seq 1 "$BENCH_RUNS"); do
   echo ""
   echo "######################################################################"
-  echo "# Run $RUN of $BENCH_RUNS"
+  echo "# Measured run $RUN of $BENCH_RUNS"
   echo "######################################################################"
 
   # ---- Create output directory -----------------------------------------------
@@ -337,16 +365,6 @@ json.dump({
 " "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION"
 
   echo "Results for run $RUN: $RESULT_DIR"
-
-  # ---- Warmup ----------------------------------------------------------------
-
-  echo ""
-  echo "=== Warmup (${WARMUP_SECONDS}s) ==="
-  maybe_taskset "$K6_CPUSET" k6 run \
-    -e MODE=constant \
-    -e "BENCH_OVER_TIME=${WARMUP_SECONDS}s" \
-    -e "GATEWAY_ENDPOINT=$GRAPHQL_URL" \
-    "$REPO_ROOT/k6/k6.js" >/dev/null 2>&1 || true
 
   # ---- Start monitor ---------------------------------------------------------
 
@@ -398,7 +416,7 @@ done
 
 echo ""
 echo "======================================================================="
-echo "All $BENCH_RUNS runs complete."
+echo "All $BENCH_RUNS measured runs complete (plus 1 warmup, discarded)."
 echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE | Duration: ${MEASURE_SECONDS}s"
 echo "Results: $RESULTS_BASE/"
 echo "======================================================================="

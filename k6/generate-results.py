@@ -3,7 +3,9 @@
 
 import json
 import os
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 
@@ -33,6 +35,11 @@ def find_results(artifacts_dir):
     return results
 
 
+def extract_rps(summary):
+    """Extract RPS from k6 summary JSON."""
+    return int(summary.get("metrics", {}).get("http_reqs", {}).get("values", {}).get("rate", 0))
+
+
 def extract_metrics(summary):
     """Extract key metrics from k6 summary JSON."""
     metrics = summary.get("metrics", {})
@@ -50,11 +57,11 @@ def extract_metrics(summary):
 
     # Determine notes from success_rate and check failures
     sr_fails = int(success_rate.get("fails", 0))
-    notes = "✅"
+    notes = ""
     if sr_fails > 0:
-        notes = f"❌ non-compatible response structure ({sr_fails})"
+        notes = f"non-compatible response structure ({sr_fails})"
     elif failed > 0:
-        notes = f"❌ {failed} failed requests"
+        notes = f"{failed} failed requests"
 
     return {
         "rps": int(rps),
@@ -66,41 +73,60 @@ def extract_metrics(summary):
     }
 
 
-def get_display_name(metadata):
-    """Get display name from metadata, with version if available."""
-    name = metadata.get("display_name", metadata["gateway"])
-    version = metadata.get("version", "")
-    if version:
-        return f"{name} ({version})"
-    return name
+def get_gateway_name(metadata):
+    """Get display name without version."""
+    return metadata.get("display_name", metadata["gateway"])
+
+
+def get_version(metadata):
+    """Get version string."""
+    return metadata.get("version", "")
 
 
 def select_median_runs(results):
-    """Group runs by display name, pick the median run by RPS for each gateway."""
-    from collections import defaultdict
-
+    """Group runs by gateway, compute aggregate stats (median, best, worst, CV%)."""
     groups = defaultdict(list)
     for r in results:
-        name = get_display_name(r["metadata"])
-        metrics = extract_metrics(r["summary"])
+        name = get_gateway_name(r["metadata"])
+        version = get_version(r["metadata"])
+        rps = extract_rps(r["summary"])
         groups[name].append({
             "result": r,
-            "metrics": metrics,
+            "rps": rps,
+            "version": version,
         })
 
     selected = []
     for gateway, runs in groups.items():
-        # Sort by RPS and pick the middle one
-        runs.sort(key=lambda x: x["metrics"]["rps"])
-        median_idx = len(runs) // 2
+        runs.sort(key=lambda x: x["rps"])
+        all_rps = [r["rps"] for r in runs]
+        n = len(all_rps)
+
+        median_idx = n // 2
         median_run = runs[median_idx]
-        total_runs = len(runs)
-        all_rps = [r["metrics"]["rps"] for r in runs]
-        print(f"  {gateway}: {total_runs} run(s), RPS=[{', '.join(str(r) for r in all_rps)}], "
-              f"selected median RPS={median_run['metrics']['rps']}")
+        median_rps = median_run["rps"]
+        best_rps = max(all_rps)
+        worst_rps = min(all_rps)
+
+        if n > 1 and median_rps > 0:
+            stdev = statistics.stdev(all_rps)
+            cv_pct = round(stdev / median_rps * 100, 1)
+        else:
+            cv_pct = 0.0
+
+        version = runs[0]["version"]
+
+        print(f"  {gateway}: {n} run(s), RPS=[{', '.join(str(r) for r in all_rps)}], "
+              f"median={median_rps}, best={best_rps}, worst={worst_rps}, CV={cv_pct}%")
+
         selected.append({
             "gateway": gateway,
-            "metrics": median_run["metrics"],
+            "version": version,
+            "median_rps": median_rps,
+            "best_rps": best_rps,
+            "worst_rps": worst_rps,
+            "cv_pct": cv_pct,
+            "metrics": extract_metrics(median_run["result"]["summary"]),
             "k6_txt": median_run["result"]["k6_txt"],
             "summary": median_run["result"]["summary"],
         })
@@ -116,11 +142,11 @@ def generate_markdown(mode, results):
 
     print(f"\nSelecting median runs for mode '{mode}':")
     entries = select_median_runs(mode_results)
-    entries.sort(key=lambda e: e["metrics"]["rps"], reverse=True)
+    entries.sort(key=lambda e: e["median_rps"], reverse=True)
 
     first = mode_results[0]["summary"]
     vus = first.get("vus", 50 if mode == "constant" else 500)
-    duration = first.get("duration", "60s")
+    duration = first.get("duration", "120s")
 
     lines = []
 
@@ -135,9 +161,11 @@ def generate_markdown(mode, results):
         "([HotChocolate](https://github.com/ChilliCream/graphql-platform)) "
         "or Rust ([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
         "\n"
-        "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS). "
-        "Each gateway is tested 10 times (120s each) and the median result (by RPS) is used."
-    )
+        "**Methodology:** Each gateway executes 11 runs of {duration} each. The first run is a "
+        "full-duration warmup (discarded). The remaining 10 runs are measured. Results are ranked "
+        "by **median RPS** across the 10 measured runs, with best/worst/CV% reported for "
+        "transparency."
+    ).format(duration=duration)
 
     if mode == "constant":
         lines.append("## Overview for: `constant-vus-over-time`")
@@ -163,22 +191,20 @@ def generate_markdown(mode, results):
 
     # Table header
     lines.append(
-        "| Gateway                                        | RPS ⬇️ |        Requests        "
-        "|        Duration        | Notes                                    |"
+        "| Gateway | Version | Median RPS | Best RPS | Worst RPS | CV% |"
     )
     lines.append(
-        "| :--------------------------------------------- | :----: | :--------------------: "
-        "| :--------------------: | :--------------------------------------- |"
+        "| :------ | :------ | ---------: | -------: | --------: | --: |"
     )
 
     for entry in entries:
-        m = entry["metrics"]
         gw = entry["gateway"]
-        rps = m["rps"]
-        reqs = f"{m['total']} total, {m['failed']} failed"
-        dur = f"avg: {m['avg_ms']:.0f}ms, p95: {m['p95_ms']:.0f}ms"
-        notes = m["notes"]
-        lines.append(f"| {gw:<46} | {rps:>4}  | {reqs:^22} | {dur:^22} | {notes:<40} |")
+        ver = entry["version"]
+        lines.append(
+            f"| {gw} | {ver} | {entry['median_rps']:,} | "
+            f"{entry['best_rps']:,} | {entry['worst_rps']:,} | "
+            f"{entry['cv_pct']:.1f}% |"
+        )
 
     lines.append("")
     lines.append("")
@@ -186,10 +212,12 @@ def generate_markdown(mode, results):
     # Expandable details per gateway
     for entry in entries:
         gw = entry["gateway"]
+        ver = entry["version"]
+        gw_label = f"{gw} ({ver})" if ver else gw
         k6_txt = entry["k6_txt"].strip()
 
         lines.append("<details>")
-        lines.append(f"  <summary>Summary for: {gw}</summary>")
+        lines.append(f"  <summary>Summary for: {gw_label}</summary>")
         lines.append("")
         lines.append("  **K6 Output**")
         lines.append("")
