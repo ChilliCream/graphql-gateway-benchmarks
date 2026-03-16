@@ -94,8 +94,13 @@ jobs:
       - name: Prepare workspace for perfrunner
         if: steps.check.outputs.skip != 'true'
         run: |
-          sudo chmod -R a+rX .
+          # Both users need write access during a run:
+          # - perfrunner writes dependency artifacts (node_modules, target, etc.)
+          # - github-runner writes benchmark outputs (results/, summaries)
+          sudo chmod -R a+rX,g+rwX .
           sudo chown -R perfrunner:github-runner .
+          # Preserve github-runner as group owner for newly created files/dirs.
+          sudo find . -type d -exec chmod g+s {} +
 
       - name: Run benchmark
         if: steps.check.outputs.skip != 'true'
