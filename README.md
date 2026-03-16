@@ -29,7 +29,6 @@ Both benchmark families support both subgraph variants:
 
 ### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
 - [HotChocolate](./composite-schema/gateways/hotchocolate) (.NET)
-- [HotChocolate AOT](./composite-schema/gateways/hotchocolate-aot) (.NET Native AOT)
 
 ## Running benchmarks locally
 

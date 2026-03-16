@@ -22,7 +22,6 @@ on:
           - hive-gateway-router-runtime
           - hive-router
           - hotchocolate
-          - hotchocolate-aot
       runs:
         description: 'Number of benchmark runs per gateway'
         required: false
@@ -61,9 +60,6 @@ jobs:
               "hc": "hotchocolate",
               "hc-rust": "hotchocolate-rust",
               "hc-net": "hotchocolate-net",
-              "hc-aot": "hotchocolate-aot",
-              "hc-aot-rust": "hotchocolate-aot-rust",
-              "hc-aot-net": "hotchocolate-aot-net",
           }
           selected = aliases.get(selected, selected)
 
@@ -116,11 +112,6 @@ jobs:
                   "path": "composite-schema/gateways/hotchocolate",
                   "name": "hotchocolate",
                   "gateway_artifact": "prebuilt-gateway-hotchocolate",
-              },
-              {
-                  "path": "composite-schema/gateways/hotchocolate-aot",
-                  "name": "hotchocolate-aot",
-                  "gateway_artifact": "prebuilt-gateway-hotchocolate-aot",
               },
           ]
 
@@ -318,9 +309,6 @@ jobs:
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
           fi
-          if [[ -f composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway ]]; then
-            chmod +x composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway
-          fi
 
       - name: Download prebuilt subgraphs
         uses: actions/download-artifact@v4
@@ -434,9 +422,6 @@ jobs:
           fi
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
-          fi
-          if [[ -f composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway ]]; then
-            chmod +x composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway
           fi
 
       - name: Download prebuilt subgraphs
