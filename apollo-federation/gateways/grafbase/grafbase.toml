@@ -1,0 +1,3 @@
+[[headers]]
+rule = "forward"
+name = "Authorization"

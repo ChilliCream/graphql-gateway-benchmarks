@@ -3,11 +3,16 @@ import { check } from "k6";
 import { Rate } from "k6/metrics";
 import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.1/index.js";
 
-const endpoint = __ENV.GATEWAY_ENDPOINT || "http://0.0.0.0:4000/graphql";
+const endpoint = __ENV.GATEWAY_ENDPOINT || "http://0.0.0.0:5220/graphql";
 const mode = __ENV.MODE || "constant";
 const isConstant = mode === "constant";
-const vus = __ENV.BENCH_VUS ? parseInt(__ENV.BENCH_VUS) : isConstant ? 50 : 500;
+const parsedVus = parseInt(__ENV.BENCH_VUS || "", 10);
+const defaultVus = isConstant ? 50 : 500;
+const vus = Number.isFinite(parsedVus) && parsedVus > 0 ? parsedVus : defaultVus;
 const duration = __ENV.BENCH_OVER_TIME || "60s";
+const durationSeconds = parseDurationSeconds(duration);
+const rampFloorVUs = resolveRampFloorVUs(__ENV.BENCH_RAMP_FLOOR_VUS, vus);
+const rampingStages = buildRampingStages(durationSeconds, rampFloorVUs, vus);
 
 const successRate = new Rate("success_rate");
 
@@ -31,18 +36,125 @@ export const options = isConstant
       scenarios: {
         stress: {
           executor: "ramping-vus",
-          startVUs: 0,
-          stages: [
-            { duration: "10s", target: 50 },
-            { duration: "40s", target: vus },
-            { duration: "10s", target: 50 },
-          ],
+          startVUs: rampFloorVUs,
+          stages: rampingStages,
           gracefulRampDown: "1s",
           gracefulStop: "0s",
         },
       },
       summaryTrendStats,
     };
+
+function parsePositiveInt(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function resolveRampFloorVUs(value, peakVUs) {
+  const fallbackFloor = 50;
+  const configured = parsePositiveInt(value);
+  const candidate = configured === null ? fallbackFloor : configured;
+  const peak = Number.isFinite(peakVUs) && peakVUs > 0 ? Math.floor(peakVUs) : 1;
+  return Math.max(1, Math.min(candidate, peak));
+}
+
+function parseDurationSeconds(value) {
+  const normalized = String(value || "").trim();
+  const match = normalized.match(/^(\d+)([smh]?)$/i);
+  if (!match) {
+    return 60;
+  }
+
+  const amount = parseInt(match[1], 10);
+  const unit = (match[2] || "s").toLowerCase();
+
+  if (unit === "m") {
+    return amount * 60;
+  }
+  if (unit === "h") {
+    return amount * 3600;
+  }
+
+  return amount;
+}
+
+function splitThreeStages(totalSeconds) {
+  if (totalSeconds <= 0) {
+    return [1, 1, 1];
+  }
+
+  // Keep the existing 1:4:1 profile while matching total runtime exactly.
+  const stages = [
+    Math.floor(totalSeconds / 6),
+    Math.floor((totalSeconds * 4) / 6),
+    Math.floor(totalSeconds / 6),
+  ];
+
+  for (let i = 0; i < stages.length; i++) {
+    if (stages[i] < 1) {
+      stages[i] = 1;
+    }
+  }
+
+  let sum = stages[0] + stages[1] + stages[2];
+  while (sum > totalSeconds) {
+    if (stages[1] > 1) {
+      stages[1] -= 1;
+      sum -= 1;
+      continue;
+    }
+    if (stages[0] > 1) {
+      stages[0] -= 1;
+      sum -= 1;
+      continue;
+    }
+    if (stages[2] > 1) {
+      stages[2] -= 1;
+      sum -= 1;
+      continue;
+    }
+    break;
+  }
+
+  while (sum < totalSeconds) {
+    stages[1] += 1;
+    sum += 1;
+  }
+
+  return stages;
+}
+
+function buildRampingStages(totalSeconds, floorVUs, targetVUs) {
+  const validTotal = Number.isFinite(totalSeconds)
+    ? Math.max(1, Math.floor(totalSeconds))
+    : 60;
+
+  if (validTotal === 1) {
+    return [{ duration: "1s", target: targetVUs }];
+  }
+
+  if (validTotal === 2) {
+    return [
+      { duration: "1s", target: targetVUs },
+      { duration: "1s", target: floorVUs },
+    ];
+  }
+
+  const [up, hold, down] = splitThreeStages(validTotal);
+  return [
+    { duration: `${up}s`, target: targetVUs },
+    { duration: `${hold}s`, target: targetVUs },
+    { duration: `${down}s`, target: floorVUs },
+  ];
+}
 
 export function setup() {
   for (let i = 0; i < vus * 2; i++) {
@@ -165,11 +277,19 @@ function handleBenchmarkSummary(data, additionalContext = {}) {
   return out;
 }
 
+let _reqCounter = 0;
+
 function sendGraphQLRequest() {
+  const reqId = typeof __ITER !== "undefined" ? `${__VU}-${__ITER}` : `s-${_reqCounter++}`;
   const res = http.post(
     endpoint,
     graphqlRequest.payload,
-    graphqlRequest.params
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer bench-${reqId}`,
+      },
+    }
   );
 
   return res;

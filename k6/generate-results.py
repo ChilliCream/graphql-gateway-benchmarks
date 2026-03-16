@@ -3,7 +3,9 @@
 
 import json
 import os
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 
@@ -33,6 +35,11 @@ def find_results(artifacts_dir):
     return results
 
 
+def extract_rps(summary):
+    """Extract RPS from k6 summary JSON."""
+    return int(summary.get("metrics", {}).get("http_reqs", {}).get("values", {}).get("rate", 0))
+
+
 def extract_metrics(summary):
     """Extract key metrics from k6 summary JSON."""
     metrics = summary.get("metrics", {})
@@ -50,11 +57,11 @@ def extract_metrics(summary):
 
     # Determine notes from success_rate and check failures
     sr_fails = int(success_rate.get("fails", 0))
-    notes = "✅"
+    notes = ""
     if sr_fails > 0:
-        notes = f"❌ non-compatible response structure ({sr_fails})"
+        notes = f"non-compatible response structure ({sr_fails})"
     elif failed > 0:
-        notes = f"❌ {failed} failed requests"
+        notes = f"{failed} failed requests"
 
     return {
         "rps": int(rps),
@@ -66,39 +73,128 @@ def extract_metrics(summary):
     }
 
 
-def get_display_name(metadata):
-    """Get display name from metadata, falling back to gateway name."""
-    return metadata.get("display_name", metadata["gateway"])
+def get_gateway_name(metadata):
+    """Get gateway identifier."""
+    return metadata.get("gateway", metadata.get("display_name", "unknown"))
+
+
+def get_subgraph_tech(metadata):
+    """Get subgraph technology label."""
+    tech = str(metadata.get("subgraph_tech", "")).strip().lower()
+    if tech in {"rust", ".net", "net"}:
+        return ".net" if tech in {"net", ".net"} else "rust"
+
+    variant = str(metadata.get("subgraphs", "")).strip().lower()
+    if variant == "subgraphs-rust":
+        return "rust"
+    if variant == "subgraphs-net":
+        return ".net"
+
+    display_name = str(metadata.get("display_name", "")).lower()
+    if "(.net subgraphs)" in display_name or "(net subgraphs)" in display_name:
+        return ".net"
+    if "(rust subgraphs)" in display_name:
+        return "rust"
+
+    return "unknown"
+
+
+def get_version(metadata):
+    """Get version string."""
+    return metadata.get("version", "")
+
+
+def collect_hardware_profiles(results):
+    """Collect unique benchmark hardware profiles from metadata."""
+    profiles = defaultdict(int)
+    for r in results:
+        metadata = r.get("metadata", {})
+        profile = (
+            str(metadata.get("machine_hostname", "")).strip(),
+            str(metadata.get("machine_os", "")).strip(),
+            str(metadata.get("machine_cpu", "")).strip(),
+            str(metadata.get("machine_cores", "")).strip(),
+            str(metadata.get("machine_ram", "")).strip(),
+        )
+        if any(profile):
+            profiles[profile] += 1
+    return sorted(profiles.items(), key=lambda item: item[1], reverse=True)
 
 
 def select_median_runs(results):
-    """Group runs by display name, pick the median run by RPS for each gateway."""
-    from collections import defaultdict
-
+    """Group runs by gateway, compute aggregate stats (median, best, worst, CV%)."""
     groups = defaultdict(list)
     for r in results:
-        name = get_display_name(r["metadata"])
+        metadata = r["metadata"]
+        name = get_gateway_name(metadata)
+        subgraph_tech = get_subgraph_tech(metadata)
+        version = get_version(r["metadata"])
+        rps = extract_rps(r["summary"])
         metrics = extract_metrics(r["summary"])
-        groups[name].append({
+        groups[(name, subgraph_tech)].append({
             "result": r,
+            "rps": rps,
+            "version": version,
             "metrics": metrics,
+            "display_name": metadata.get("display_name", f"{name} ({subgraph_tech} subgraphs)"),
         })
 
     selected = []
-    for gateway, runs in groups.items():
-        # Sort by RPS and pick the middle one
-        runs.sort(key=lambda x: x["metrics"]["rps"])
-        median_idx = len(runs) // 2
+    for (gateway, subgraph_tech), runs in groups.items():
+        runs.sort(key=lambda x: x["rps"])
+        all_rps = [r["rps"] for r in runs]
+        n = len(all_rps)
+
+        median_idx = n // 2
         median_run = runs[median_idx]
-        total_runs = len(runs)
-        all_rps = [r["metrics"]["rps"] for r in runs]
-        print(f"  {gateway}: {total_runs} run(s), RPS=[{', '.join(str(r) for r in all_rps)}], "
-              f"selected median RPS={median_run['metrics']['rps']}")
+        median_rps = median_run["rps"]
+        best_rps = max(all_rps)
+        worst_rps = min(all_rps)
+
+        if n > 1 and median_rps > 0:
+            stdev = statistics.stdev(all_rps)
+            cv_pct = round(stdev / median_rps * 100, 1)
+        else:
+            cv_pct = 0.0
+
+        version = runs[0]["version"]
+
+        # Aggregate errors across ALL runs, not just the median
+        total_failed = sum(r["metrics"]["failed"] for r in runs)
+        total_sr_fails = sum(
+            int(r["result"]["summary"].get("metrics", {})
+                .get("success_rate", {}).get("values", {}).get("fails", 0))
+            for r in runs
+        )
+        runs_with_errors = sum(
+            1 for r in runs
+            if r["metrics"]["failed"] > 0 or
+            int(r["result"]["summary"].get("metrics", {})
+                .get("success_rate", {}).get("values", {}).get("fails", 0)) > 0
+        )
+
+        notes = ""
+        if total_sr_fails > 0:
+            notes = f"non-compatible response ({total_sr_fails} across {runs_with_errors}/{n} runs)"
+        elif total_failed > 0:
+            notes = f"{total_failed} failed requests across {runs_with_errors}/{n} runs"
+
+        print(f"  {gateway} [{subgraph_tech}]: {n} run(s), RPS=[{', '.join(str(r) for r in all_rps)}], "
+              f"median={median_rps}, best={best_rps}, worst={worst_rps}, CV={cv_pct}%")
+
         selected.append({
             "gateway": gateway,
+            "subgraph_tech": subgraph_tech,
+            "version": version,
+            "median_rps": median_rps,
+            "best_rps": best_rps,
+            "worst_rps": worst_rps,
+            "cv_pct": cv_pct,
+            "notes": notes,
             "metrics": median_run["metrics"],
             "k6_txt": median_run["result"]["k6_txt"],
             "summary": median_run["result"]["summary"],
+            "display_name": runs[0]["display_name"],
         })
 
     return selected
@@ -112,28 +208,27 @@ def generate_markdown(mode, results):
 
     print(f"\nSelecting median runs for mode '{mode}':")
     entries = select_median_runs(mode_results)
-    entries.sort(key=lambda e: e["metrics"]["rps"], reverse=True)
+    entries.sort(key=lambda e: e["median_rps"], reverse=True)
 
     first = mode_results[0]["summary"]
     vus = first.get("vus", 50 if mode == "constant" else 500)
-    duration = first.get("duration", "60s")
+    duration = first.get("duration", "120s")
 
     lines = []
 
     SCENARIO_DESCRIPTION = (
         "Each benchmark runs a GraphQL gateway with 4 subgraphs and executes a heavy nested "
-        "query that exercises federation/composition capabilities. The benchmarks cover two "
-        "schema composition approaches:\n"
+        "query that exercises federation/composition capabilities.\n"
         "\n"
-        "- **Apollo Federation** — subgraphs are built with Rust "
-        "([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
-        "- **Composite Schema** — subgraphs are built with .NET "
-        "([HotChocolate](https://github.com/ChilliCream/graphql-platform)) "
-        "or Rust ([async-graphql](https://github.com/async-graphql/async-graphql) + axum)\n"
+        "Subgraph technology is reported in the `Subgraphs` column for each row:\n"
+        "- `rust` = [async-graphql](https://github.com/async-graphql/async-graphql) + axum\n"
+        "- `.net` = [HotChocolate](https://github.com/ChilliCream/graphql-platform)\n"
         "\n"
-        "Metrics collected include RPS, latency percentiles, CPU usage, and memory (RSS). "
-        "Each gateway is tested 3 times and the median result (by RPS) is used."
-    )
+        "**Methodology:** Each gateway executes 11 runs of {duration} each. The first run is a "
+        "full-duration warmup (discarded). The remaining 10 runs are measured. Results are ranked "
+        "by **median RPS** across the 10 measured runs, with best/worst/CV% reported for "
+        "transparency."
+    ).format(duration=duration)
 
     if mode == "constant":
         lines.append("## Overview for: `constant-vus-over-time`")
@@ -159,33 +254,58 @@ def generate_markdown(mode, results):
 
     # Table header
     lines.append(
-        "| Gateway                     | RPS ⬇️ |        Requests        "
-        "|        Duration        | Notes                                    |"
+        "| Gateway | Subgraphs | Version | Median RPS | Best RPS | Worst RPS | CV% | Notes |"
     )
     lines.append(
-        "| :-------------------------- | :----: | :--------------------: "
-        "| :--------------------: | :--------------------------------------- |"
+        "| :------ | :-------- | :------ | ---------: | -------: | --------: | --: | :---- |"
     )
 
     for entry in entries:
-        m = entry["metrics"]
         gw = entry["gateway"]
-        rps = m["rps"]
-        reqs = f"{m['total']} total, {m['failed']} failed"
-        dur = f"avg: {m['avg_ms']:.0f}ms, p95: {m['p95_ms']:.0f}ms"
-        notes = m["notes"]
-        lines.append(f"| {gw:<27} | {rps:>4}  | {reqs:^22} | {dur:^22} | {notes:<40} |")
+        subgraphs = entry["subgraph_tech"]
+        ver = entry["version"]
+        notes = entry.get("notes", "")
+        lines.append(
+            f"| {gw} | {subgraphs} | {ver} | {entry['median_rps']:,} | "
+            f"{entry['best_rps']:,} | {entry['worst_rps']:,} | "
+            f"{entry['cv_pct']:.1f}% | {notes} |"
+        )
 
     lines.append("")
+    lines.append("### Footnotes")
+    lines.append("")
+    hardware_profiles = collect_hardware_profiles(mode_results)
+    if hardware_profiles:
+        for idx, (profile, count) in enumerate(hardware_profiles, 1):
+            host, os_name, cpu, cores, ram = profile
+            parts = []
+            if host:
+                parts.append(f"host={host}")
+            if os_name:
+                parts.append(f"os={os_name}")
+            if cpu:
+                parts.append(f"cpu={cpu}")
+            if cores:
+                parts.append(f"cores={cores}")
+            if ram:
+                parts.append(f"ram={ram}")
+            suffix = f" (observed in {count} run metadata entries)" if len(hardware_profiles) > 1 else ""
+            lines.append(f"- Benchmark hardware #{idx}: " + ", ".join(parts) + suffix)
+    else:
+        lines.append("- Benchmark hardware: unavailable in metadata.")
+
     lines.append("")
 
     # Expandable details per gateway
     for entry in entries:
         gw = entry["gateway"]
+        ver = entry["version"]
+        display_name = entry.get("display_name", gw)
+        gw_label = f"{display_name} ({ver})" if ver else display_name
         k6_txt = entry["k6_txt"].strip()
 
         lines.append("<details>")
-        lines.append(f"  <summary>Summary for: {gw}</summary>")
+        lines.append(f"  <summary>Summary for: {gw_label}</summary>")
         lines.append("")
         lines.append("  **K6 Output**")
         lines.append("")

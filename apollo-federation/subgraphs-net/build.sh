@@ -4,6 +4,15 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REQUIRED_DOTNET_MAJOR=10
+CSPROJ_FILES=()
+while IFS= read -r csproj; do
+  [[ -n "$csproj" ]] && CSPROJ_FILES+=("$csproj")
+done < <(find "$SCRIPT_DIR" -mindepth 2 -maxdepth 2 -type f -name '*.csproj' | sort)
+
+if [[ ${#CSPROJ_FILES[@]} -eq 0 ]]; then
+  echo "ERROR: no .csproj files found under $SCRIPT_DIR"
+  exit 1
+fi
 
 # --- Ensure .NET SDK is installed ---
 if command -v dotnet &>/dev/null; then
@@ -13,10 +22,12 @@ if command -v dotnet &>/dev/null; then
   else
     echo ".NET SDK $INSTALLED_MAJOR found but need $REQUIRED_DOTNET_MAJOR+. Installing..."
     curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+    export PATH="$HOME/.dotnet:$PATH"
   fi
 else
   echo ".NET SDK not found. Installing .NET $REQUIRED_DOTNET_MAJOR..."
   curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+  export PATH="$HOME/.dotnet:$PATH"
 fi
 
 # --- Fetch latest HotChocolate preview version from NuGet ---
@@ -33,8 +44,8 @@ echo "Latest HotChocolate preview version: $LATEST_PREVIEW"
 
 # --- Update HotChocolate package versions in subgraph .csproj files ---
 echo "Updating HotChocolate* package references to $LATEST_PREVIEW..."
-for csproj in "$SCRIPT_DIR"/*/*.csproj; do
-  if [ -f "$csproj" ] && grep -q 'Include="HotChocolate' "$csproj"; then
+for csproj in "${CSPROJ_FILES[@]}"; do
+  if grep -q 'Include="HotChocolate' "$csproj"; then
     sed -i.bak -E 's/(Include="HotChocolate[^"]*" Version=")[^"]+(")/\1'"$LATEST_PREVIEW"'\2/g' "$csproj"
     rm -f "$csproj.bak"
     echo "  Updated: $(basename "$(dirname "$csproj")")/$(basename "$csproj")"
@@ -43,9 +54,10 @@ done
 
 # --- Build all subgraph projects ---
 echo "Building subgraphs..."
-for proj in "$SCRIPT_DIR"/eShop.*/; do
-  echo "  Building $(basename "$proj")..."
-  cd "$proj" && dotnet build -c Release --nologo -v quiet
+for csproj in "${CSPROJ_FILES[@]}"; do
+  project_name="$(basename "$(dirname "$csproj")")"
+  echo "  Building $project_name..."
+  dotnet build "$csproj" -c Release --nologo -v quiet
 done
 
 echo "Subgraphs build complete (version: $LATEST_PREVIEW)."

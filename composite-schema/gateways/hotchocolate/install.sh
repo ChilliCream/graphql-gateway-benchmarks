@@ -13,10 +13,12 @@ if command -v dotnet &>/dev/null; then
   else
     echo ".NET SDK $INSTALLED_MAJOR found but need $REQUIRED_DOTNET_MAJOR+. Installing..."
     curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+    export PATH="$HOME/.dotnet:$PATH"
   fi
 else
   echo ".NET SDK not found. Installing .NET $REQUIRED_DOTNET_MAJOR..."
   curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+  export PATH="$HOME/.dotnet:$PATH"
 fi
 
 # --- Fetch latest HotChocolate preview version from NuGet ---
@@ -45,4 +47,5 @@ done
 echo "Building HotChocolate gateway..."
 cd "$SCRIPT_DIR/eShop.Gateway" && dotnet build -c Release --nologo -v quiet
 
+echo "$LATEST_PREVIEW" > "$SCRIPT_DIR/version.txt"
 echo "HotChocolate gateway build complete (version: $LATEST_PREVIEW)."
