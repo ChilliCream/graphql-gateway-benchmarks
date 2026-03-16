@@ -98,6 +98,17 @@ if ! command -v k6 &>/dev/null; then
   exit 1
 fi
 
+# ---- Execution context --------------------------------------------------------
+
+echo ""
+echo "=== Execution Context ==="
+echo "  Orchestrator user: $(id -un) (uid=$(id -u))"
+if id perfrunner &>/dev/null; then
+  echo "  Workload user:     perfrunner (via sudo -u perfrunner)"
+else
+  echo "  Workload user:     current user (perfrunner not found)"
+fi
+
 # ---- Cleanup trap ------------------------------------------------------------
 
 SUBGRAPH_PID=""
@@ -293,6 +304,52 @@ run_pinned_as_perfrunner() {
   fi
 }
 
+assert_process_user() {
+  local pid="$1"
+  local expected_user="$2"
+  local label="$3"
+  local actual_user
+
+  actual_user="$(ps -o user= -p "$pid" 2>/dev/null | xargs || true)"
+  if [[ -z "$actual_user" ]]; then
+    echo "Error: could not determine process user for $label (pid=$pid)"
+    exit 1
+  fi
+  if [[ "$actual_user" != "$expected_user" ]]; then
+    echo "Error: $label must run as '$expected_user', but runs as '$actual_user' (pid=$pid)"
+    exit 1
+  fi
+}
+
+# Print gateway/subgraph logs when startup fails to make CI failures diagnosable.
+print_startup_logs() {
+  local gateway_log="$GATEWAY_DIR/gateway_log.txt"
+  local log
+  local found_subgraph_logs=false
+
+  echo ""
+  echo "=== Gateway startup log ==="
+  if [[ -f "$gateway_log" ]]; then
+    tail -n 200 "$gateway_log" || true
+  else
+    echo "No gateway log found at: $gateway_log"
+  fi
+
+  echo ""
+  echo "=== Subgraph startup logs ==="
+  shopt -s nullglob
+  for log in "$SUBGRAPHS_DIR"/*log.txt; do
+    found_subgraph_logs=true
+    echo "--- $(basename "$log") ---"
+    tail -n 120 "$log" || true
+  done
+  shopt -u nullglob
+
+  if [[ "$found_subgraph_logs" == false ]]; then
+    echo "No subgraph logs found in: $SUBGRAPHS_DIR"
+  fi
+}
+
 # ---- Install dependencies ---------------------------------------------------
 
 echo ""
@@ -322,24 +379,45 @@ echo "=== Starting gateway ==="
 GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
 
+if id perfrunner &>/dev/null; then
+  assert_process_user "$SUBGRAPH_PID" "perfrunner" "subgraphs launcher"
+  assert_process_user "$GATEWAY_PID" "perfrunner" "gateway launcher"
+  echo "Privilege isolation: gateway/subgraphs running as perfrunner"
+fi
+
 # ---- Wait for gateway health -------------------------------------------------
 
 echo "Waiting for gateway to become healthy at $HEALTH_URL ..."
-TIMEOUT=60
-ELAPSED=0
-while [[ $ELAPSED -lt $TIMEOUT ]]; do
+TIMEOUT_SECONDS=60
+START_TS="$(date +%s)"
+while true; do
   if curl -s -o /dev/null -w '' --max-time 2 "$HEALTH_URL" 2>/dev/null; then
+    ELAPSED=$(( $(date +%s) - START_TS ))
     echo "Gateway is healthy! (took ${ELAPSED}s)"
     break
   fi
-  sleep 0.5
-  ELAPSED=$((ELAPSED + 1))
-done
 
-if [[ $ELAPSED -ge $TIMEOUT ]]; then
-  echo "Error: gateway did not become healthy within ${TIMEOUT}s"
-  exit 1
-fi
+  if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+    echo "Error: gateway process exited before becoming healthy"
+    print_startup_logs
+    exit 1
+  fi
+
+  if ! kill -0 "$SUBGRAPH_PID" 2>/dev/null; then
+    echo "Error: subgraphs process exited before gateway became healthy"
+    print_startup_logs
+    exit 1
+  fi
+
+  ELAPSED=$(( $(date +%s) - START_TS ))
+  if [[ $ELAPSED -ge $TIMEOUT_SECONDS ]]; then
+    echo "Error: gateway did not become healthy within ${TIMEOUT_SECONDS}s"
+    print_startup_logs
+    exit 1
+  fi
+
+  sleep 0.5
+done
 
 # ---- Verify CPU pinning ------------------------------------------------------
 

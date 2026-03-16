@@ -1,5 +1,5 @@
 import { ApolloServer } from "@apollo/server";
-import { expressMiddleware } from "@apollo/server/express4";
+import { expressMiddleware } from "@as-integrations/express4";
 import { ApolloGateway, RemoteGraphQLDataSource } from "@apollo/gateway";
 import { readFileSync } from "fs";
 import cluster from "cluster";
