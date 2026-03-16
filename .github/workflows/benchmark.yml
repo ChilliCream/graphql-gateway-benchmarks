@@ -70,10 +70,15 @@ jobs:
           pkill -f './cosmo' || true
           pkill -f './grafbase' || true
           pkill -f 'npm start' || true
+          pkill -f 'tsx ' || true
           pkill -f 'npx hive-gateway' || true
           pkill -f 'dotnet.*eShop' || true
           pkill -f 'k6 run' || true
           pkill -f 'subgraphs' || true
+          # Kill anything still on benchmark ports as a safety net
+          for port in 5220 5221 5222 5223 5224; do
+            lsof -ti :"$port" | xargs kill 2>/dev/null || true
+          done
           sleep 2
           echo "Done."
 

@@ -32,7 +32,7 @@ async fn delay_middleware(req: Request, next: Next) -> Response {
 #[tokio::main]
 async fn main() {
     let host = var("HOST").unwrap_or("0.0.0.0".to_owned());
-    let port = var("PORT").unwrap_or("4200".to_owned());
+    let port = var("PORT").unwrap_or("5221".to_owned());
 
     let app = Router::new()
         .route(
@@ -54,7 +54,7 @@ async fn main() {
         .route("/health", axum::routing::get(|| async { "OK" }))
         .route_layer(middleware::from_fn(delay_middleware));
 
-    println!("Starting server on http://localhost:4200");
+    println!("Starting server on http://localhost:5221");
 
     axum::serve(
         TcpListener::bind(&format!("{}:{}", host, port))

@@ -1,6 +1,6 @@
 supergraph:
     path: /graphql
-    listen: 0.0.0.0:4000
+    listen: 0.0.0.0:5220
 headers:
     all:
         request:

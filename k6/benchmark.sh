@@ -121,7 +121,7 @@ fi
 echo ""
 echo "=== Cleaning up stale processes ==="
 STALE_FOUND=false
-for pattern in "k6 run" "./router " "npm start" "npx hive-gateway" "dotnet.*eShop" "./cosmo" "./grafbase" "/subgraphs$"; do
+for pattern in "k6 run" "./router " "npm start" "tsx " "npx hive-gateway" "dotnet.*eShop" "./cosmo" "./grafbase" "/subgraphs$"; do
   while IFS= read -r line; do
     pid=$(echo "$line" | awk '{print $1}')
     if [[ -n "$pid" ]]; then
@@ -308,6 +308,19 @@ echo ""
 echo "=== Installing gateway dependencies ==="
 (cd "$GATEWAY_DIR" && bash install.sh)
 source_tool_envs
+
+# ---- Kill anything on benchmark ports ----------------------------------------
+# Safety net: ensure no stale process is occupying the gateway or subgraph ports.
+# All gateways MUST listen on port 5220. Subgraphs use 5221-5224.
+
+for port in 5220 5221 5222 5223 5224; do
+  STALE_PORT_PID=$(lsof -ti :"$port" 2>/dev/null || true)
+  if [[ -n "$STALE_PORT_PID" ]]; then
+    echo "WARNING: Killing stale process(es) on port $port: $STALE_PORT_PID"
+    echo "$STALE_PORT_PID" | xargs kill 2>/dev/null || true
+  fi
+done
+sleep 1
 
 # ---- Start subgraphs --------------------------------------------------------
 

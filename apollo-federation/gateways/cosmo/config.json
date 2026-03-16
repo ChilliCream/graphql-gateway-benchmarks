@@ -15,7 +15,7 @@
         "customGraphql": {
           "fetch": {
             "url": {
-              "staticVariableContent": "http://localhost:4200/accounts"
+              "staticVariableContent": "http://localhost:5221/accounts"
             },
             "method": "POST",
             "body": {},
@@ -25,7 +25,7 @@
           "subscription": {
             "enabled": true,
             "url": {
-              "staticVariableContent": "http://localhost:4200/accounts"
+              "staticVariableContent": "http://localhost:5221/accounts"
             },
             "protocol": "GRAPHQL_SUBSCRIPTION_PROTOCOL_WS",
             "websocketSubprotocol": "GRAPHQL_WEBSOCKET_SUBPROTOCOL_AUTO"
@@ -55,7 +55,7 @@
         "customGraphql": {
           "fetch": {
             "url": {
-              "staticVariableContent": "http://localhost:4200/inventory"
+              "staticVariableContent": "http://localhost:5221/inventory"
             },
             "method": "POST",
             "body": {},
@@ -65,7 +65,7 @@
           "subscription": {
             "enabled": true,
             "url": {
-              "staticVariableContent": "http://localhost:4200/inventory"
+              "staticVariableContent": "http://localhost:5221/inventory"
             },
             "protocol": "GRAPHQL_SUBSCRIPTION_PROTOCOL_WS",
             "websocketSubprotocol": "GRAPHQL_WEBSOCKET_SUBPROTOCOL_AUTO"
@@ -102,7 +102,7 @@
         "customGraphql": {
           "fetch": {
             "url": {
-              "staticVariableContent": "http://localhost:4200/products"
+              "staticVariableContent": "http://localhost:5221/products"
             },
             "method": "POST",
             "body": {},
@@ -112,7 +112,7 @@
           "subscription": {
             "enabled": true,
             "url": {
-              "staticVariableContent": "http://localhost:4200/products"
+              "staticVariableContent": "http://localhost:5221/products"
             },
             "protocol": "GRAPHQL_SUBSCRIPTION_PROTOCOL_WS",
             "websocketSubprotocol": "GRAPHQL_WEBSOCKET_SUBPROTOCOL_AUTO"
@@ -150,7 +150,7 @@
         "overrideFieldPathFromAlias": true,
         "customGraphql": {
           "fetch": {
-            "url": { "staticVariableContent": "http://localhost:4200/reviews" },
+            "url": { "staticVariableContent": "http://localhost:5221/reviews" },
             "method": "POST",
             "body": {},
             "baseUrl": {},
@@ -158,7 +158,7 @@
           },
           "subscription": {
             "enabled": true,
-            "url": { "staticVariableContent": "http://localhost:4200/reviews" },
+            "url": { "staticVariableContent": "http://localhost:5221/reviews" },
             "protocol": "GRAPHQL_SUBSCRIPTION_PROTOCOL_WS",
             "websocketSubprotocol": "GRAPHQL_WEBSOCKET_SUBPROTOCOL_AUTO"
           },
@@ -215,22 +215,22 @@
     {
       "id": "0",
       "name": "accounts",
-      "routingUrl": "http://localhost:4200/accounts"
+      "routingUrl": "http://localhost:5221/accounts"
     },
     {
       "id": "1",
       "name": "inventory",
-      "routingUrl": "http://localhost:4200/inventory"
+      "routingUrl": "http://localhost:5221/inventory"
     },
     {
       "id": "2",
       "name": "products",
-      "routingUrl": "http://localhost:4200/products"
+      "routingUrl": "http://localhost:5221/products"
     },
     {
       "id": "3",
       "name": "reviews",
-      "routingUrl": "http://localhost:4200/reviews"
+      "routingUrl": "http://localhost:5221/reviews"
     }
   ]
 }

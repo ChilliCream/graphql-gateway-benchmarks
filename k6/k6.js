@@ -3,7 +3,7 @@ import { check } from "k6";
 import { Rate } from "k6/metrics";
 import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.1/index.js";
 
-const endpoint = __ENV.GATEWAY_ENDPOINT || "http://0.0.0.0:4000/graphql";
+const endpoint = __ENV.GATEWAY_ENDPOINT || "http://0.0.0.0:5220/graphql";
 const mode = __ENV.MODE || "constant";
 const isConstant = mode === "constant";
 const vus = __ENV.BENCH_VUS ? parseInt(__ENV.BENCH_VUS) : isConstant ? 50 : 500;
