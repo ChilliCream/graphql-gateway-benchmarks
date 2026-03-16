@@ -502,7 +502,7 @@ gateway_rss_kb() {
   pids+=("$GATEWAY_PID")
   while IFS= read -r pid; do
     [[ -n "$pid" ]] && pids+=("$pid")
-  done < <(pgrep -P "$GATEWAY_PID" 2>/dev/null || true)
+  done < <(list_descendant_pids "$GATEWAY_PID")
 
   for pid in "${pids[@]}"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then

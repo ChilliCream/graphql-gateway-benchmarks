@@ -40,13 +40,32 @@ fi
 
 echo "Seconds,VUs,RPS,P95_ms,Req_success_rate,Total_CPU,Total_RSS_KB" > "$OUTPUT_FILE"
 
+list_descendant_pids() {
+  local root_pid="$1"
+  local queue=("$root_pid")
+  local current
+  local child
+
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    current="${queue[0]}"
+    queue=("${queue[@]:1}")
+    while IFS= read -r child; do
+      [[ -z "$child" ]] && continue
+      echo "$child"
+      queue+=("$child")
+    done < <(pgrep -P "$current" 2>/dev/null || true)
+  done
+}
+
 get_target_pids() {
   local pids=""
   if [[ -n "$PGID" ]]; then
     pids=$(pgrep -g "$PGID" || true)
   elif [[ -n "$LEADER_PID" ]]; then
-    pids=$(pgrep -P "$LEADER_PID" || true)
-    pids="$LEADER_PID $pids"
+    pids="$LEADER_PID"
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && pids="$pids $pid"
+    done < <(list_descendant_pids "$LEADER_PID")
   fi
   echo "$pids" | tr '\n' ' '
 }
