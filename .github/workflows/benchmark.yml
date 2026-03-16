@@ -1,5 +1,5 @@
 name: Benchmark
-run-name: Benchmark Run ${{ github.run_number }} - ${{ github.run_started_at || 'start-time-unavailableZ' }}
+run-name: Benchmark Run ${{ github.run_number }}
 
 on:
   workflow_dispatch:
@@ -34,6 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -43,6 +44,19 @@ jobs:
       gateways: ${{ steps.build.outputs.gateways }}
       gateway_builds: ${{ steps.build.outputs.gateway_builds }}
     steps:
+      - name: Set workflow run title
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          RUN_TS_UTC="$(date -u +%Y%m%dT%H%M%SZ)"
+          RUN_TITLE="Benchmark Run ${GITHUB_RUN_NUMBER} - ${RUN_TS_UTC}"
+          curl -fsS -X PATCH \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            -d "{\"name\":\"${RUN_TITLE}\"}" >/dev/null
+          echo "Updated run title: ${RUN_TITLE}"
+
       - name: Build gateway matrix
         id: build
         env:
