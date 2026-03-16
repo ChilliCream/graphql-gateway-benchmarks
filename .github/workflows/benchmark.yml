@@ -3,6 +3,22 @@ name: Benchmark
 on:
   workflow_dispatch:
     inputs:
+      gateway:
+        description: 'Gateway to benchmark'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - apollo-gateway
+          - apollo-router
+          - cosmo
+          - grafbase
+          - hive-gateway
+          - hive-gateway-router-runtime
+          - hive-router
+          - hotchocolate
+          - hotchocolate-rust
       runs:
         description: 'Number of benchmark runs per gateway'
         required: false
@@ -48,6 +64,7 @@ jobs:
         mode:
           - constant
           - ramping
+    if: inputs.gateway == 'all' || inputs.gateway == matrix.gateway.name
     runs-on:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (${{ matrix.mode }})

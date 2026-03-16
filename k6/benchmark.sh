@@ -261,11 +261,11 @@ PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:/home/perf
 
 run_as_perfrunner() {
   if id perfrunner &>/dev/null; then
-    sudo -u perfrunner \
-      HOME="/home/perfrunner" \
-      PATH="$PERFRUNNER_PATH" \
-      FORK="${FORK:-}" \
-      -- "$@"
+    sudo -u perfrunner -- \
+      env HOME="/home/perfrunner" \
+          PATH="$PERFRUNNER_PATH" \
+          FORK="${FORK:-}" \
+      "$@"
   else
     "$@"
   fi
