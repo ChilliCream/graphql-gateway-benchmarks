@@ -1,5 +1,5 @@
 name: Benchmark
-run-name: Benchmark #${{ github.run_number }} · ${{ github.run_started_at || 'start-time-unavailable' }}
+run-name: Benchmark Run ${{ github.run_number }} - ${{ github.run_started_at || 'start-time-unavailableZ' }}
 
 on:
   workflow_dispatch:

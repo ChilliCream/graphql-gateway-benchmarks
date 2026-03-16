@@ -604,16 +604,45 @@ gateway_rss_kb() {
   local pids=()
   local live_pids=()
   local pid
+
+  pid_exists() {
+    local candidate_pid="$1"
+    ps -o pid= -p "$candidate_pid" 2>/dev/null | grep -q '[0-9]'
+  }
+
   pids+=("$root_pid")
   while IFS= read -r pid; do
     [[ -n "$pid" ]] && pids+=("$pid")
   done < <(list_descendant_pids "$root_pid")
 
   for pid in "${pids[@]}"; do
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    if [[ -n "$pid" ]] && pid_exists "$pid"; then
       live_pids+=("$pid")
     fi
   done
+
+  # If the root PID rotated (for example launcher/parent exited), refresh from
+  # listener port and retry once so idle/end snapshots stay meaningful.
+  if [[ ${#live_pids[@]} -eq 0 && -n "${GRAPHQL_PORT:-}" ]]; then
+    local refreshed_root
+    refreshed_root="$(resolve_listener_pid_by_port "$GRAPHQL_PORT" || true)"
+    if [[ -n "$refreshed_root" ]]; then
+      GATEWAY_METRIC_PID="$refreshed_root"
+      root_pid="$refreshed_root"
+      pids=("$root_pid")
+      live_pids=()
+
+      while IFS= read -r pid; do
+        [[ -n "$pid" ]] && pids+=("$pid")
+      done < <(list_descendant_pids "$root_pid")
+
+      for pid in "${pids[@]}"; do
+        if [[ -n "$pid" ]] && pid_exists "$pid"; then
+          live_pids+=("$pid")
+        fi
+      done
+    fi
+  fi
 
   if [[ ${#live_pids[@]} -eq 0 ]]; then
     echo 0
