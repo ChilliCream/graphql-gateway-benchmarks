@@ -87,9 +87,23 @@ sum_cpu_rss() {
   for pid in $pids; do
     ps_args+=(-p "$pid")
   done
-  ps "${ps_args[@]}" -o %cpu,rss 2>/dev/null | awk '
-    NR > 1 { cpu+=$1; rss+=$2 } END { printf("%.2f,%d\n", cpu, rss) }
-  ' || printf "0.00,0\n"
+
+  local ps_output
+  if ! ps_output=$(ps "${ps_args[@]}" -o %cpu=,rss= 2>/dev/null); then
+    printf "0.00,0\n"
+    return
+  fi
+
+  awk '
+    NF >= 2 { cpu+=$1; rss+=$2; seen=1 }
+    END {
+      if (seen) {
+        printf("%.2f,%d\n", cpu, rss)
+      } else {
+        printf("0.00,0\n")
+      }
+    }
+  ' <<< "$ps_output"
 }
 
 START_TIME=$(date +%s)

@@ -356,13 +356,33 @@ fi
 # ---- Helper: gateway RSS (KB) ------------------------------------------------
 
 gateway_rss_kb() {
-  local pids
-  pids="$GATEWAY_PID $(pgrep -P "$GATEWAY_PID" 2>/dev/null || true)"
+  local pids=()
+  local live_pids=()
+  local pid
+  pids+=("$GATEWAY_PID")
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] && pids+=("$pid")
+  done < <(pgrep -P "$GATEWAY_PID" 2>/dev/null || true)
+
+  for pid in "${pids[@]}"; do
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      live_pids+=("$pid")
+    fi
+  done
+
+  if [[ ${#live_pids[@]} -eq 0 ]]; then
+    echo 0
+    return 0
+  fi
+
   local ps_args=()
-  for pid in $pids; do
+  for pid in "${live_pids[@]}"; do
     ps_args+=(-p "$pid")
   done
-  ps "${ps_args[@]}" -o rss= 2>/dev/null | awk '{sum+=$1} END {print sum+0}'
+
+  local rss
+  rss=$(ps "${ps_args[@]}" -o rss= 2>/dev/null | awk '{sum+=$1} END {print sum+0}' || true)
+  echo "${rss:-0}"
 }
 
 # ---- Run iterations ----------------------------------------------------------

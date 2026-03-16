@@ -15,11 +15,28 @@ echo "=== CPU Affinity Verification ==="
 check_affinity() {
   local label="$1"
   local pid="$2"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "  ${label} (PID $pid): not running"
+    return 0
+  fi
+
   # The captured PID is the outer subshell; the actual pinned process is a child
   local child
-  child=$(pgrep -P "$pid" 2>/dev/null | head -1)
+  child=$(pgrep -P "$pid" 2>/dev/null | head -1 || true)
   local check_pid="${child:-$pid}"
-  echo "  ${label} (PID $check_pid): $(taskset -cp "$check_pid" 2>/dev/null | awk -F': ' '{print $2}')"
+
+  if ! kill -0 "$check_pid" 2>/dev/null; then
+    echo "  ${label} (PID $check_pid): not running"
+    return 0
+  fi
+
+  local affinity
+  affinity=$(taskset -cp "$check_pid" 2>/dev/null | awk -F': ' '{print $2}' || true)
+  if [[ -n "$affinity" ]]; then
+    echo "  ${label} (PID $check_pid): $affinity"
+  else
+    echo "  ${label} (PID $check_pid): affinity unavailable"
+  fi
 }
 
 GATEWAY_PID="${1:-}"
@@ -35,7 +52,9 @@ fi
 
 # Check for stray processes on benchmark cores
 echo "  Checking for stray processes on benchmark cores..."
-STRAY=$(ps -eo pid,psr,comm --sort=-psr 2>/dev/null | awk '$2 >= 1 && $2 <= 7 {print}' | grep -v -E '^\s*PID|migration|watchdog|ksoftirq|kworker|rcu_' | head -5)
+STRAY=$(ps -eo pid,psr,comm --sort=-psr 2>/dev/null \
+  | awk '$2 >= 1 && $2 <= 7 && $3 !~ /^(migration|watchdog|ksoftirq|kworker|rcu_)/ {print}' \
+  | head -5 || true)
 if [[ -n "$STRAY" ]]; then
   echo "  ⚠️  Found processes on benchmark cores:"
   echo "$STRAY" | sed 's/^/    /'

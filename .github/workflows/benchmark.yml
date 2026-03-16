@@ -20,7 +20,44 @@ permissions:
   contents: write
 
 jobs:
+  smoke:
+    name: smoke (apollo-gateway constant)
+    runs-on:
+      group: benchmarking-1
+    env:
+      BENCH_RUNS: '1'
+      MEASURE_SECONDS: '15'
+      BENCH_VUS: '10'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke benchmark
+        run: ./k6/benchmark.sh apollo-federation/gateways/apollo-gateway constant
+
+      - name: Kill gateway and subgraph processes
+        if: always()
+        run: |
+          echo "Killing leftover gateway/subgraph processes..."
+          pkill -f './router ' || true
+          pkill -f './cosmo' || true
+          pkill -f './grafbase' || true
+          pkill -f 'npm start' || true
+          pkill -f 'npx hive-gateway' || true
+          pkill -f 'dotnet.*eShop' || true
+          pkill -f 'k6 run' || true
+          pkill -f 'subgraphs' || true
+          sleep 2
+          echo "Done."
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-apollo-gateway-constant
+          path: apollo-federation/gateways/apollo-gateway/results/
+
   benchmark:
+    needs: smoke
     strategy:
       fail-fast: false
       matrix:
@@ -85,8 +122,8 @@ jobs:
           path: ${{ matrix.gateway.path }}/results/
 
   generate-results:
-    needs: benchmark
-    if: ${{ !cancelled() }}
+    needs: [smoke, benchmark]
+    if: ${{ !cancelled() && needs.smoke.result == 'success' && needs.benchmark.result != 'cancelled' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
