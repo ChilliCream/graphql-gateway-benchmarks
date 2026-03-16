@@ -64,7 +64,6 @@ jobs:
         mode:
           - constant
           - ramping
-    if: inputs.gateway == 'all' || inputs.gateway == matrix.gateway.name
     runs-on:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (${{ matrix.mode }})
@@ -72,26 +71,40 @@ jobs:
       BENCH_RUNS: ${{ inputs.runs || '10' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
+      - name: Skip if gateway not selected
+        id: check
+        run: |
+          if [[ "${{ inputs.gateway || 'all' }}" == "all" || "${{ inputs.gateway }}" == "${{ matrix.gateway.name }}" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping ${{ matrix.gateway.name }} (not selected)"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.skip != 'true'
 
       - name: Kill stale perfrunner processes
+        if: steps.check.outputs.skip != 'true'
         run: |
           sudo pkill -u perfrunner || true
           sleep 1
           sudo pkill -9 -u perfrunner || true
 
       - name: Prepare workspace for perfrunner
+        if: steps.check.outputs.skip != 'true'
         run: |
           sudo chmod -R a+rX .
           sudo chown -R perfrunner:github-runner .
 
       - name: Run benchmark
+        if: steps.check.outputs.skip != 'true'
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ${{ matrix.mode }}
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
 
       - name: Kill all perfrunner processes
-        if: always()
+        if: always() && steps.check.outputs.skip != 'true'
         run: |
           echo "Killing all perfrunner processes..."
           sudo pkill -u perfrunner || true
@@ -100,11 +113,11 @@ jobs:
           echo "Done."
 
       - name: Reclaim workspace ownership
-        if: always()
+        if: always() && steps.check.outputs.skip != 'true'
         run: sudo chown -R $(id -u):$(id -g) .
 
       - name: Upload results
-        if: always()
+        if: always() && steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ matrix.gateway.name }}-${{ matrix.mode }}
