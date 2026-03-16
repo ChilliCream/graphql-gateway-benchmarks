@@ -105,6 +105,11 @@ if ! command -v k6 &>/dev/null; then
   exit 1
 fi
 
+CAN_SUDO=false
+if command -v sudo &>/dev/null && sudo -n true &>/dev/null; then
+  CAN_SUDO=true
+fi
+
 # ---- Execution context --------------------------------------------------------
 
 echo ""
@@ -120,6 +125,7 @@ fi
 
 SUBGRAPH_PID=""
 GATEWAY_PID=""
+GATEWAY_METRIC_PID=""
 MONITOR_PID=""
 
 cleanup() {
@@ -410,6 +416,60 @@ print_startup_logs() {
   fi
 }
 
+extract_port_from_url() {
+  python3 -c "
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+print(u.port or '')
+" "$1" 2>/dev/null || true
+}
+
+resolve_listener_pid_by_port() {
+  local port="$1"
+  local pid=""
+  local candidate=""
+  local owner=""
+
+  [[ -z "$port" ]] && return 1
+
+  run_lookup_cmd() {
+    if [[ "$CAN_SUDO" == true ]]; then
+      sudo -n "$@" 2>/dev/null || "$@" 2>/dev/null || true
+    else
+      "$@" 2>/dev/null || true
+    fi
+  }
+
+  # Prefer lsof when available because it directly reports LISTEN sockets.
+  if command -v lsof &>/dev/null; then
+    while IFS= read -r candidate; do
+      [[ -z "$candidate" ]] && continue
+      owner="$(ps -o user= -p "$candidate" 2>/dev/null | xargs || true)"
+      if [[ -z "$pid" ]]; then
+        pid="$candidate"
+      fi
+      if [[ "$owner" == "perfrunner" ]]; then
+        pid="$candidate"
+        break
+      fi
+    done < <(run_lookup_cmd lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | sort -u)
+  fi
+
+  # Fallback: parse PID from ss output.
+  if [[ -z "$pid" ]] && command -v ss &>/dev/null; then
+    pid="$(run_lookup_cmd ss -ltnp "sport = :$port" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -n1)"
+  fi
+
+  # Last resort.
+  if [[ -z "$pid" ]] && command -v fuser &>/dev/null; then
+    pid="$(run_lookup_cmd fuser -n tcp "$port" | awk '{print $1}')"
+  fi
+
+  [[ -n "$pid" ]] || return 1
+  echo "$pid"
+}
+
 # ---- Install dependencies ---------------------------------------------------
 
 echo ""
@@ -487,22 +547,34 @@ while true; do
   sleep 0.5
 done
 
+# Determine the real gateway process for memory/cpu accounting.
+GRAPHQL_PORT="$(extract_port_from_url "$GRAPHQL_URL")"
+RESOLVED_GATEWAY_PID="$(resolve_listener_pid_by_port "$GRAPHQL_PORT" || true)"
+if [[ -n "$RESOLVED_GATEWAY_PID" ]]; then
+  GATEWAY_METRIC_PID="$RESOLVED_GATEWAY_PID"
+  echo "Gateway metric root PID: $GATEWAY_METRIC_PID (listener on port ${GRAPHQL_PORT:-unknown})"
+else
+  GATEWAY_METRIC_PID="$GATEWAY_PID"
+  echo "Note: could not resolve gateway listener PID; using launcher PID for metrics: $GATEWAY_METRIC_PID"
+fi
+
 # ---- Verify CPU pinning ------------------------------------------------------
 
 if [[ "$USE_PINNING" == true ]]; then
-  bash "$REPO_ROOT/k6/verify-pinning.sh" "$GATEWAY_PID" "$SUBGRAPH_PID"
+  bash "$REPO_ROOT/k6/verify-pinning.sh" "$GATEWAY_METRIC_PID" "$SUBGRAPH_PID"
 fi
 
 # ---- Helper: gateway RSS (KB) ------------------------------------------------
 
 gateway_rss_kb() {
+  local root_pid="${GATEWAY_METRIC_PID:-$GATEWAY_PID}"
   local pids=()
   local live_pids=()
   local pid
-  pids+=("$GATEWAY_PID")
+  pids+=("$root_pid")
   while IFS= read -r pid; do
     [[ -n "$pid" ]] && pids+=("$pid")
-  done < <(list_descendant_pids "$GATEWAY_PID")
+  done < <(list_descendant_pids "$root_pid")
 
   for pid in "${pids[@]}"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -610,7 +682,7 @@ json.dump({
   echo ""
   echo "=== Starting monitor ==="
   bash "$REPO_ROOT/k6/monitor.sh" \
-    -p "$GATEWAY_PID" \
+    -p "$GATEWAY_METRIC_PID" \
     -k "$K6_API_ADDR" \
     -o "$RESULT_DIR/data.csv" \
     -i 0.2 &

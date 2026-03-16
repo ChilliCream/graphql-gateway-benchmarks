@@ -1,4 +1,5 @@
 name: Benchmark
+run-name: Benchmark #${{ github.run_number }} · ${{ github.run_started_at || 'start-time-unavailable' }}
 
 on:
   workflow_dispatch:
@@ -36,32 +37,76 @@ permissions:
   contents: write
 
 jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      gateways: ${{ steps.build.outputs.gateways }}
+    steps:
+      - name: Build gateway matrix
+        id: build
+        env:
+          SELECTED_GATEWAY: ${{ inputs.gateway || 'all' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          selected = os.environ.get("SELECTED_GATEWAY", "all")
+          aliases = {
+              "hc": "hotchocolate",
+              "hc-rust": "hotchocolate-rust",
+          }
+          selected = aliases.get(selected, selected)
+
+          gateways = [
+              {"path": "apollo-federation/gateways/apollo-gateway", "name": "apollo-gateway"},
+              {"path": "apollo-federation/gateways/apollo-router", "name": "apollo-router"},
+              {"path": "apollo-federation/gateways/cosmo", "name": "cosmo"},
+              {"path": "apollo-federation/gateways/grafbase", "name": "grafbase"},
+              {"path": "apollo-federation/gateways/hive-gateway", "name": "hive-gateway"},
+              {
+                  "path": "apollo-federation/gateways/hive-gateway-router-runtime",
+                  "name": "hive-gateway-router-runtime",
+              },
+              {"path": "apollo-federation/gateways/hive-router", "name": "hive-router"},
+              {
+                  "path": "composite-schema/gateways/hotchocolate",
+                  "name": "hotchocolate",
+                  "subgraphs": "subgraphs-net",
+                  "display_name": "hotchocolate (.net subgraphs)",
+              },
+              {
+                  "path": "composite-schema/gateways/hotchocolate",
+                  "name": "hotchocolate-rust",
+                  "subgraphs": "subgraphs-rust",
+              },
+          ]
+
+          if selected == "all":
+              chosen = gateways
+          else:
+              chosen = [entry for entry in gateways if entry["name"] == selected]
+
+          if not chosen:
+              print(f"Error: no gateway entries match selection {selected!r}", file=sys.stderr)
+              sys.exit(1)
+
+          matrix_json = json.dumps(chosen, separators=(",", ":"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"gateways={matrix_json}\n")
+
+          print("Selected gateway entries:")
+          for entry in chosen:
+              print(f" - {entry['name']}")
+          PY
+
   benchmark-constant:
+    needs: prepare-matrix
     strategy:
       fail-fast: false
       matrix:
-        gateway:
-          - path: apollo-federation/gateways/apollo-gateway
-            name: apollo-gateway
-          - path: apollo-federation/gateways/apollo-router
-            name: apollo-router
-          - path: apollo-federation/gateways/cosmo
-            name: cosmo
-          - path: apollo-federation/gateways/grafbase
-            name: grafbase
-          - path: apollo-federation/gateways/hive-gateway
-            name: hive-gateway
-          - path: apollo-federation/gateways/hive-gateway-router-runtime
-            name: hive-gateway-router-runtime
-          - path: apollo-federation/gateways/hive-router
-            name: hive-router
-          - path: composite-schema/gateways/hotchocolate
-            name: hotchocolate
-            subgraphs: subgraphs-net
-            display_name: "hotchocolate (.net subgraphs)"
-          - path: composite-schema/gateways/hotchocolate
-            name: hotchocolate-rust
-            subgraphs: subgraphs-rust
+        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways) }}
     runs-on:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (constant)
@@ -69,28 +114,15 @@ jobs:
       BENCH_RUNS: ${{ inputs.runs || '10' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
-      - name: Skip if gateway not selected
-        id: check
-        run: |
-          if [[ "${{ inputs.gateway || 'all' }}" == "all" || "${{ inputs.gateway }}" == "${{ matrix.gateway.name }}" ]]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Skipping ${{ matrix.gateway.name }} (not selected)"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.check.outputs.skip != 'true'
 
       - name: Kill stale perfrunner processes
-        if: steps.check.outputs.skip != 'true'
         run: |
           sudo pkill -u perfrunner || true
           sleep 1
           sudo pkill -9 -u perfrunner || true
 
       - name: Prepare workspace for perfrunner
-        if: steps.check.outputs.skip != 'true'
         run: |
           # Both users need write access during a run:
           # - perfrunner writes dependency artifacts (node_modules, target, etc.)
@@ -101,13 +133,12 @@ jobs:
           sudo find . -type d -exec chmod g+s {} +
 
       - name: Run benchmark
-        if: steps.check.outputs.skip != 'true'
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
 
       - name: Kill all perfrunner processes
-        if: always() && steps.check.outputs.skip != 'true'
+        if: always()
         run: |
           echo "Killing all perfrunner processes..."
           sudo pkill -u perfrunner || true
@@ -116,44 +147,25 @@ jobs:
           echo "Done."
 
       - name: Reclaim workspace ownership
-        if: always() && steps.check.outputs.skip != 'true'
+        if: always()
         run: sudo chown -R $(id -u):$(id -g) .
 
       - name: Upload results
-        if: always() && steps.check.outputs.skip != 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ matrix.gateway.name }}-constant
           path: ${{ matrix.gateway.path }}/results/
 
   benchmark-ramping:
-    needs: benchmark-constant
+    needs:
+      - prepare-matrix
+      - benchmark-constant
     if: ${{ always() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
-        gateway:
-          - path: apollo-federation/gateways/apollo-gateway
-            name: apollo-gateway
-          - path: apollo-federation/gateways/apollo-router
-            name: apollo-router
-          - path: apollo-federation/gateways/cosmo
-            name: cosmo
-          - path: apollo-federation/gateways/grafbase
-            name: grafbase
-          - path: apollo-federation/gateways/hive-gateway
-            name: hive-gateway
-          - path: apollo-federation/gateways/hive-gateway-router-runtime
-            name: hive-gateway-router-runtime
-          - path: apollo-federation/gateways/hive-router
-            name: hive-router
-          - path: composite-schema/gateways/hotchocolate
-            name: hotchocolate
-            subgraphs: subgraphs-net
-            display_name: "hotchocolate (.net subgraphs)"
-          - path: composite-schema/gateways/hotchocolate
-            name: hotchocolate-rust
-            subgraphs: subgraphs-rust
+        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways) }}
     runs-on:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (ramping)
@@ -161,28 +173,15 @@ jobs:
       BENCH_RUNS: ${{ inputs.runs || '10' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
-      - name: Skip if gateway not selected
-        id: check
-        run: |
-          if [[ "${{ inputs.gateway || 'all' }}" == "all" || "${{ inputs.gateway }}" == "${{ matrix.gateway.name }}" ]]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Skipping ${{ matrix.gateway.name }} (not selected)"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.check.outputs.skip != 'true'
 
       - name: Kill stale perfrunner processes
-        if: steps.check.outputs.skip != 'true'
         run: |
           sudo pkill -u perfrunner || true
           sleep 1
           sudo pkill -9 -u perfrunner || true
 
       - name: Prepare workspace for perfrunner
-        if: steps.check.outputs.skip != 'true'
         run: |
           # Both users need write access during a run:
           # - perfrunner writes dependency artifacts (node_modules, target, etc.)
@@ -193,13 +192,12 @@ jobs:
           sudo find . -type d -exec chmod g+s {} +
 
       - name: Run benchmark
-        if: steps.check.outputs.skip != 'true'
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ramping
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
 
       - name: Kill all perfrunner processes
-        if: always() && steps.check.outputs.skip != 'true'
+        if: always()
         run: |
           echo "Killing all perfrunner processes..."
           sudo pkill -u perfrunner || true
@@ -208,45 +206,120 @@ jobs:
           echo "Done."
 
       - name: Reclaim workspace ownership
-        if: always() && steps.check.outputs.skip != 'true'
+        if: always()
         run: sudo chown -R $(id -u):$(id -g) .
 
       - name: Upload results
-        if: always() && steps.check.outputs.skip != 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ matrix.gateway.name }}-ramping
           path: ${{ matrix.gateway.path }}/results/
 
-  generate-results:
+  generate-results-constant:
+    needs: benchmark-constant
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*-constant
+          path: artifacts/
+
+      - name: Generate constant result document
+        run: python3 k6/generate-results.py artifacts/ .
+
+      - name: Write constant summary
+        run: |
+          echo "# Benchmark Results (Constant)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ -f RESULTS_CONSTANT.md ]]; then
+            cat RESULTS_CONSTANT.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No constant results were generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Commit constant results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RESULTS_CONSTANT.md
+          git diff --cached --quiet || git commit -m "Update constant benchmark results"
+          git push
+
+  generate-results-ramping:
     needs:
-      - benchmark-constant
       - benchmark-ramping
+      - generate-results-constant
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: results-*
+          pattern: results-*-ramping
           path: artifacts/
 
-      - name: Generate result documents
+      - name: Generate ramping result document
         run: python3 k6/generate-results.py artifacts/ .
 
-      - name: Write job summary
+      - name: Write ramping summary
         run: |
-          echo "# Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "# Benchmark Results (Ramping)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          cat RESULTS_CONSTANT.md >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          cat RESULTS_RAMPING.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f RESULTS_RAMPING.md ]]; then
+            cat RESULTS_RAMPING.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No ramping results were generated." >> $GITHUB_STEP_SUMMARY
+          fi
 
-      - name: Commit results
+      - name: Commit ramping results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RESULTS_CONSTANT.md RESULTS_RAMPING.md
-          git diff --cached --quiet || git commit -m "Update benchmark results"
+          git add RESULTS_RAMPING.md
+          git diff --cached --quiet || git commit -m "Update ramping benchmark results"
           git push
+
+  benchmark-summary:
+    needs:
+      - generate-results-constant
+      - generate-results-ramping
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Write final benchmark summary
+        run: |
+          echo "# Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Run: **Benchmark #${{ github.run_number }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Started (UTC): **${{ github.run_started_at || 'start-time-unavailable' }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Gateway selection: \`${{ inputs.gateway || 'all' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Runs per gateway: \`${{ inputs.runs || '10' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Duration per run: \`${{ inputs.duration || '120' }}s\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -f RESULTS_CONSTANT.md ]]; then
+            cat RESULTS_CONSTANT.md >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No constant results were generated." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f RESULTS_RAMPING.md ]]; then
+            cat RESULTS_RAMPING.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No ramping results were generated." >> $GITHUB_STEP_SUMMARY
+          fi
