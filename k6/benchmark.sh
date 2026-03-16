@@ -257,7 +257,19 @@ fi
 # 'perfrunner' user. This ensures third-party gateway binaries cannot access
 # root or system resources. Cleanup: 'sudo pkill -u perfrunner'.
 
-PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:/home/perfrunner/.nvm/versions/node/$(ls /home/perfrunner/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:${PATH}"
+PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:${PATH}"
+PERFRUNNER_NODE_BIN=""
+
+# Prefer the newest nvm-managed Node bin if available, but don't fail if nvm
+# is missing or no Node version has been installed for perfrunner yet.
+for node_dir in /home/perfrunner/.nvm/versions/node/*; do
+  [[ -d "$node_dir" ]] || continue
+  PERFRUNNER_NODE_BIN="$node_dir/bin"
+done
+
+if [[ -n "$PERFRUNNER_NODE_BIN" ]]; then
+  PERFRUNNER_PATH="$PERFRUNNER_NODE_BIN:$PERFRUNNER_PATH"
+fi
 
 run_as_perfrunner() {
   if id perfrunner &>/dev/null; then
