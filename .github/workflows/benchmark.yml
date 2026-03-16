@@ -176,11 +176,15 @@ jobs:
           chmod +x "${{ matrix.subgraphs.path }}/build.sh"
           (cd "${{ matrix.subgraphs.path }}" && bash build.sh)
 
+      - name: Pack prebuilt subgraphs
+        run: |
+          tar -czf "prebuilt-subgraphs-${{ matrix.subgraphs.artifact }}.tar.gz" "${{ matrix.subgraphs.path }}"
+
       - name: Upload prebuilt subgraphs
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.subgraphs.artifact }}
-          path: ${{ matrix.subgraphs.path }}
+          path: prebuilt-subgraphs-${{ matrix.subgraphs.artifact }}.tar.gz
 
   build-gateways:
     needs: prepare-matrix
@@ -204,11 +208,15 @@ jobs:
           (cd "${{ matrix.gateway.path }}" && bash install.sh)
           touch "${{ matrix.gateway.path }}/.prebuilt-gateway-ready"
 
+      - name: Pack prebuilt gateway
+        run: |
+          tar -czf "prebuilt-gateway-${{ matrix.gateway.artifact }}.tar.gz" "${{ matrix.gateway.path }}"
+
       - name: Upload prebuilt gateway
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.gateway.artifact }}
-          path: ${{ matrix.gateway.path }}
+          path: prebuilt-gateway-${{ matrix.gateway.artifact }}.tar.gz
 
   benchmark-constant:
     needs:
@@ -236,7 +244,13 @@ jobs:
 
       - name: Restore prebuilt gateway
         run: |
-          cp -a prebuilt-gateway/. .
+          GATEWAY_ARCHIVE="$(find prebuilt-gateway -type f -name '*.tar.gz' | head -n1)"
+          if [[ -z "$GATEWAY_ARCHIVE" ]]; then
+            echo "Error: prebuilt gateway archive not found"
+            find prebuilt-gateway -maxdepth 3 -print
+            exit 1
+          fi
+          tar -xzf "$GATEWAY_ARCHIVE" -C .
           if [[ -f apollo-federation/gateways/apollo-router/router ]]; then
             chmod +x apollo-federation/gateways/apollo-router/router
           fi
@@ -258,7 +272,13 @@ jobs:
 
       - name: Restore prebuilt subgraphs
         run: |
-          cp -a prebuilt-subgraphs/. .
+          SUBGRAPHS_ARCHIVE="$(find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1)"
+          if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
+            echo "Error: prebuilt subgraphs archive not found"
+            find prebuilt-subgraphs -maxdepth 3 -print
+            exit 1
+          fi
+          tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
           if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
             chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
           fi
@@ -337,7 +357,13 @@ jobs:
 
       - name: Restore prebuilt gateway
         run: |
-          cp -a prebuilt-gateway/. .
+          GATEWAY_ARCHIVE="$(find prebuilt-gateway -type f -name '*.tar.gz' | head -n1)"
+          if [[ -z "$GATEWAY_ARCHIVE" ]]; then
+            echo "Error: prebuilt gateway archive not found"
+            find prebuilt-gateway -maxdepth 3 -print
+            exit 1
+          fi
+          tar -xzf "$GATEWAY_ARCHIVE" -C .
           if [[ -f apollo-federation/gateways/apollo-router/router ]]; then
             chmod +x apollo-federation/gateways/apollo-router/router
           fi
@@ -359,7 +385,13 @@ jobs:
 
       - name: Restore prebuilt subgraphs
         run: |
-          cp -a prebuilt-subgraphs/. .
+          SUBGRAPHS_ARCHIVE="$(find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1)"
+          if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
+            echo "Error: prebuilt subgraphs archive not found"
+            find prebuilt-subgraphs -maxdepth 3 -print
+            exit 1
+          fi
+          tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
           if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
             chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
           fi
