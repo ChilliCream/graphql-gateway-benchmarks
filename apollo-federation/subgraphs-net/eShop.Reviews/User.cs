@@ -13,9 +13,12 @@ public sealed class User
     [GraphQLType(typeof(IdType))]
     public string Id { get; set; } = default!;
 
+    [External]
+    public string? Username { get; set; }
+
     public IEnumerable<Review> GetReviews()
         => ReviewRepository.GetByUserId(Id);
 
     [ReferenceResolver]
-    public static User ResolveReference(string id) => new() { Id = id };
+    public static User ResolveReference(string id) => new() { Id = id, Username = "user" };
 }

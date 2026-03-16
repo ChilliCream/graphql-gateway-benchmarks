@@ -17,7 +17,7 @@ public sealed class Review
 
     public required string ProductUpc { get; init; }
 
-    public User GetAuthor() => new() { Id = AuthorId };
+    public User GetAuthor() => new() { Id = AuthorId, Username = "urigo" };
 
     public Product GetProduct() => new() { Upc = ProductUpc };
 
