@@ -210,7 +210,14 @@ group_avg_usage() {
       continue
     fi
 
-    usage="$(awk -v total="$dt" -v idle_delta="$di" 'BEGIN { printf "%.4f", ((total-idle_delta)/total)*100.0 }')"
+    usage="$(awk -v total="$dt" -v idle_delta="$di" '
+      BEGIN {
+        u = ((total-idle_delta)/total)*100.0
+        if (u < 0) u = 0
+        if (u > 100) u = 100
+        printf "%.4f", u
+      }'
+    )"
     sum="$(awk -v a="$sum" -v b="$usage" 'BEGIN { printf "%.6f", a+b }')"
     count=$((count + 1))
   done
@@ -218,7 +225,13 @@ group_avg_usage() {
   if (( count == 0 )); then
     printf "0.00"
   else
-    awk -v s="$sum" -v n="$count" 'BEGIN { printf "%.2f", s/n }'
+    awk -v s="$sum" -v n="$count" '
+      BEGIN {
+        avg = s/n
+        if (avg < 0) avg = 0
+        if (avg > 100) avg = 100
+        printf "%.2f", avg
+      }'
   fi
 }
 

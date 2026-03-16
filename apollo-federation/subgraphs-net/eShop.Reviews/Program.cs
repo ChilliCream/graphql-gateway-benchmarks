@@ -1,15 +1,17 @@
-[assembly: Module("ReviewTypes")]
+using HotChocolate.ApolloFederation;
 
 ThreadPool.SetMinThreads(256, 256);
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
-    .AddGraphQLServer("reviews-api", disableDefaultSecurity: true)
-    .AddReviewTypes();
+    .AddGraphQLServer()
+    .AddApolloFederation(FederationVersion.Federation27)
+    .AddQueryType<eShop.Reviews.Query>()
+    .AddType<eShop.Reviews.Review>()
+    .AddType<eShop.Reviews.User>()
+    .AddType<eShop.Reviews.Product>();
 
 var app = builder.Build();
-
-app.MapGraphQLHttp();
-
-await app.RunWithGraphQLCommandsAsync(args);
+app.MapGraphQL();
+await app.RunAsync();

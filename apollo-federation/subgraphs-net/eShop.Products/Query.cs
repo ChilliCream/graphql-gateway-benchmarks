@@ -1,13 +1,8 @@
-using HotChocolate.Types;
-using HotChocolate.Types.Relay;
-using HotChocolate.Types.Composite;
-
 namespace eShop.Products;
 
-[QueryType]
-public static partial class ProductQueries
+public class Query
 {
-    private static readonly List<Product> s_products =
+    internal static readonly List<Product> Products =
     [
         new() { Upc = "1", Name = "Table", Price = 899, Weight = 100 },
         new() { Upc = "2", Name = "Couch", Price = 1299, Weight = 1000 },
@@ -20,10 +15,6 @@ public static partial class ProductQueries
         new() { Upc = "9", Name = "Sofa", Price = 9999, Weight = 800 }
     ];
 
-    public static IEnumerable<Product> GetTopProducts(int first = 5)
-        => s_products.Take(first);
-
-    [Lookup]
-    public static Product? GetProduct([ID] string upc)
-        => s_products.FirstOrDefault(p => p.Upc == upc);
+    public IEnumerable<Product> GetTopProducts(int first = 5)
+        => Products.Take(first);
 }

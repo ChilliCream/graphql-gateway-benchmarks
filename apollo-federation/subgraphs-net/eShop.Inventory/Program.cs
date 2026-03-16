@@ -1,15 +1,15 @@
-[assembly: Module("InventoryTypes")]
+using HotChocolate.ApolloFederation;
 
 ThreadPool.SetMinThreads(256, 256);
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder
-    .AddGraphQL("inventory-api", disableDefaultSecurity: true)
-    .AddInventoryTypes();
+builder.Services
+    .AddGraphQLServer()
+    .AddApolloFederation(FederationVersion.Federation27)
+    .AddQueryType<eShop.Inventory.Query>()
+    .AddType<eShop.Inventory.Product>();
 
 var app = builder.Build();
-
-app.MapGraphQLHttp();
-
-await app.RunWithGraphQLCommandsAsync(args);
+app.MapGraphQL();
+await app.RunAsync();

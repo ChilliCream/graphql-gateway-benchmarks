@@ -1,12 +1,18 @@
-using HotChocolate.Types;
+using HotChocolate.ApolloFederation.Resolvers;
+using HotChocolate.ApolloFederation.Types;
 
 namespace eShop.Reviews;
 
-[ObjectType]
+[ExtendServiceType]
+[Key("upc")]
 public sealed class Product
 {
-    public required string Upc { get; init; }
+    [External]
+    public string Upc { get; set; } = default!;
 
     public IEnumerable<Review> GetReviews()
         => ReviewRepository.GetByProductUpc(Upc);
+
+    [ReferenceResolver]
+    public static Product ResolveReference(string upc) => new() { Upc = upc };
 }

@@ -50,19 +50,30 @@ BENCH_RUNS="${BENCH_RUNS:-10}"
 
 # ---- Machine info ------------------------------------------------------------
 
+UNAME_S="$(uname -s)"
+MACHINE_HOSTNAME="$(hostname)"
+MACHINE_OS="$(uname -sr)"
+MACHINE_CPU="unknown"
+MACHINE_CORES="unknown"
+MACHINE_RAM="unknown"
+
+if [[ "$UNAME_S" == "Linux" ]]; then
+  MACHINE_CPU="$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
+  MACHINE_CORES="$(nproc --all) logical ($(grep -c '^processor' /proc/cpuinfo) CPUs)"
+  MACHINE_RAM="$(awk '/MemTotal/ {printf "%.0f GB", $2/1024/1024}' /proc/meminfo)"
+elif [[ "$UNAME_S" == "Darwin" ]]; then
+  MACHINE_CPU="$(sysctl -n machdep.cpu.brand_string)"
+  MACHINE_CORES="$(sysctl -n hw.logicalcpu) logical"
+  MACHINE_RAM="$(( $(sysctl -n hw.memsize) / 1024/1024/1024 )) GB"
+fi
+
 echo ""
 echo "=== Machine Info ==="
-echo "  Hostname: $(hostname)"
-echo "  OS:       $(uname -sr)"
-if [[ "$(uname -s)" == "Linux" ]]; then
-  echo "  CPU:      $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
-  echo "  Cores:    $(nproc --all) logical ($(grep -c '^processor' /proc/cpuinfo) CPUs)"
-  echo "  RAM:      $(awk '/MemTotal/ {printf "%.0f GB", $2/1024/1024}' /proc/meminfo)"
-elif [[ "$(uname -s)" == "Darwin" ]]; then
-  echo "  CPU:      $(sysctl -n machdep.cpu.brand_string)"
-  echo "  Cores:    $(sysctl -n hw.logicalcpu) logical"
-  echo "  RAM:      $(( $(sysctl -n hw.memsize) / 1024/1024/1024 )) GB"
-fi
+echo "  Hostname: $MACHINE_HOSTNAME"
+echo "  OS:       $MACHINE_OS"
+echo "  CPU:      $MACHINE_CPU"
+echo "  Cores:    $MACHINE_CORES"
+echo "  RAM:      $MACHINE_RAM"
 
 # ---- Paths ------------------------------------------------------------------
 
@@ -662,13 +673,20 @@ gateway_rss_kb() {
 # ---- Run iterations ----------------------------------------------------------
 
 GATEWAY_NAME="$(basename "$GATEWAY_REL")"
+SUBGRAPH_VARIANT="$(basename "$SUBGRAPHS_DIR")"
+if [[ -n "${BENCH_SUBGRAPH_TECH:-}" ]]; then
+  SUBGRAPH_TECH="$BENCH_SUBGRAPH_TECH"
+elif [[ "$SUBGRAPH_VARIANT" == "subgraphs-rust" ]]; then
+  SUBGRAPH_TECH="rust"
+elif [[ "$SUBGRAPH_VARIANT" == "subgraphs-net" ]]; then
+  SUBGRAPH_TECH=".net"
+else
+  SUBGRAPH_TECH="$SUBGRAPH_VARIANT"
+fi
 if [[ -n "${BENCH_DISPLAY_NAME:-}" ]]; then
   DISPLAY_NAME="$BENCH_DISPLAY_NAME"
-elif [[ -n "$SUBGRAPHS_OVERRIDE" ]]; then
-  SUBGRAPH_LABEL="${SUBGRAPHS_OVERRIDE#subgraphs-}"
-  DISPLAY_NAME="$GATEWAY_NAME ($SUBGRAPH_LABEL subgraphs)"
 else
-  DISPLAY_NAME="$GATEWAY_NAME"
+  DISPLAY_NAME="$GATEWAY_NAME ($SUBGRAPH_TECH subgraphs)"
 fi
 K6_API_ADDR="127.0.0.1:6565"
 RESULTS_BASE="$GATEWAY_DIR/results"
@@ -733,9 +751,16 @@ json.dump({
     'run': int(sys.argv[6]),
     'total_runs': int(sys.argv[7]),
     'display_name': sys.argv[9],
-    'version': sys.argv[10]
+    'version': sys.argv[10],
+    'subgraphs': sys.argv[11],
+    'subgraph_tech': sys.argv[12],
+    'machine_hostname': sys.argv[13],
+    'machine_os': sys.argv[14],
+    'machine_cpu': sys.argv[15],
+    'machine_cores': sys.argv[16],
+    'machine_ram': sys.argv[17]
 }, open(sys.argv[8], 'w'), indent=2)
-" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION"
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION" "$SUBGRAPH_VARIANT" "$SUBGRAPH_TECH" "$MACHINE_HOSTNAME" "$MACHINE_OS" "$MACHINE_CPU" "$MACHINE_CORES" "$MACHINE_RAM"
 
   echo "Results for run $RUN: $RESULT_DIR"
 
@@ -785,7 +810,6 @@ json.dump({
   PEAK_RSS_KB=$(awk -F, 'NR>1 && $NF+0 > max {max=$NF+0} END {print max+0}' "$RESULT_DIR/data.csv")
   AVG_K6_CORE_CPU=$(awk -F, 'NR>1{sum+=$7;n++} END{if(n) printf "%.2f", sum/n; else print "0.00"}' "$RESULT_DIR/data.csv")
   AVG_SUBGRAPH_CORE_CPU=$(awk -F, 'NR>1{sum+=$8;n++} END{if(n) printf "%.2f", sum/n; else print "0.00"}' "$RESULT_DIR/data.csv")
-  EFFICIENCY_SCORE=$(awk -v k="$AVG_K6_CORE_CPU" -v s="$AVG_SUBGRAPH_CORE_CPU" 'BEGIN{if (s <= 0) printf "0.00"; else printf "%.2f", (k/s)*100.0}')
 
   # Persist memory stats for report generation
   python3 -c "
@@ -795,10 +819,9 @@ json.dump({
     'peak_rss_kb': int(sys.argv[2]),
     'end_rss_kb': int(sys.argv[3]),
     'avg_k6_core_cpu_pct': float(sys.argv[4]),
-    'avg_subgraph_core_cpu_pct': float(sys.argv[5]),
-    'efficiency_score': float(sys.argv[6])
-}, open(sys.argv[7], 'w'), indent=2)
-" "$IDLE_RSS_KB" "$PEAK_RSS_KB" "$END_RSS_KB" "$AVG_K6_CORE_CPU" "$AVG_SUBGRAPH_CORE_CPU" "$EFFICIENCY_SCORE" "$RESULT_DIR/memory.json"
+    'avg_subgraph_core_cpu_pct': float(sys.argv[5])
+}, open(sys.argv[6], 'w'), indent=2)
+" "$IDLE_RSS_KB" "$PEAK_RSS_KB" "$END_RSS_KB" "$AVG_K6_CORE_CPU" "$AVG_SUBGRAPH_CORE_CPU" "$RESULT_DIR/memory.json"
 
   echo ""
   echo "=== Run $RUN complete ==="
@@ -806,7 +829,8 @@ json.dump({
   echo "  k6 summary:   $RESULT_DIR/k6_summary.json"
   echo "  k6 text:      $RESULT_DIR/k6_summary.txt"
   echo "  Memory:       idle=$((IDLE_RSS_KB / 1024))MB  peak=$((PEAK_RSS_KB / 1024))MB  end=$((END_RSS_KB / 1024))MB"
-  echo "  Core Pressure: k6_avg=${AVG_K6_CORE_CPU}%  subgraphs_avg=${AVG_SUBGRAPH_CORE_CPU}%  score=${EFFICIENCY_SCORE}"
+  echo "  k6 core usage: ${AVG_K6_CORE_CPU}%"
+  echo "  subgraph core usage: ${AVG_SUBGRAPH_CORE_CPU}%"
 
 done
 
@@ -827,7 +851,8 @@ if [[ "$BENCH_RUNS" -gt 1 ]]; then
 
   # Collect RPS from all k6_summary.json files
   RPS_VALUES=()
-  EFFICIENCY_VALUES=()
+  K6_CORE_VALUES=()
+  SUBGRAPH_CORE_VALUES=()
   for result_dir in "$RESULTS_BASE"/*/; do
     if [[ -f "$result_dir/k6_summary.json" ]]; then
       RPS=$(python3 -c "
@@ -838,12 +863,13 @@ print(d.get('metrics',{}).get('http_reqs',{}).get('values',{}).get('rate',0))
       RPS_VALUES+=("$RPS")
     fi
     if [[ -f "$result_dir/memory.json" ]]; then
-      SCORE=$(python3 -c "
+      read -r K6_CORE SUBGRAPH_CORE < <(python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
-print(d.get('efficiency_score', 0))
+print(d.get('avg_k6_core_cpu_pct', 0), d.get('avg_subgraph_core_cpu_pct', 0))
 " "$result_dir/memory.json")
-      EFFICIENCY_VALUES+=("$SCORE")
+      K6_CORE_VALUES+=("$K6_CORE")
+      SUBGRAPH_CORE_VALUES+=("$SUBGRAPH_CORE")
     fi
   done
 
@@ -868,18 +894,23 @@ if cv > 3:
 " "${RPS_VALUES[@]}"
   fi
 
-  if [[ ${#EFFICIENCY_VALUES[@]} -gt 0 ]]; then
+  if [[ ${#K6_CORE_VALUES[@]} -gt 0 && ${#SUBGRAPH_CORE_VALUES[@]} -gt 0 ]]; then
+    K6_CORE_VALUES_CSV="$(IFS=,; echo "${K6_CORE_VALUES[*]}")"
+    SUBGRAPH_CORE_VALUES_CSV="$(IFS=,; echo "${SUBGRAPH_CORE_VALUES[*]}")"
+
     python3 -c "
 import sys, statistics
-vals = [float(x) for x in sys.argv[1:]]
-vals.sort()
-n = len(vals)
-median = vals[n//2] if n % 2 == 1 else (vals[n//2-1] + vals[n//2]) / 2
-mean = statistics.mean(vals)
-print(f'  Efficiency score (k6/subgraphs * 100):')
-print(f'    Values: {\" → \".join(f\"{v:.2f}\" for v in vals)}')
-print(f'    Median: {median:.2f}')
-print(f'    Mean:   {mean:.2f}')
-" "${EFFICIENCY_VALUES[@]}"
+def parse_csv(s):
+    return [float(x) for x in s.split(',') if x]
+
+k6_vals = parse_csv(sys.argv[1])
+sub_vals = parse_csv(sys.argv[2])
+
+k6_med = statistics.median(k6_vals) if k6_vals else 0.0
+sub_med = statistics.median(sub_vals) if sub_vals else 0.0
+
+print(f'  k6 core usage: {k6_med:.2f}%')
+print(f'  subgraph core usage: {sub_med:.2f}%')
+" "$K6_CORE_VALUES_CSV" "$SUBGRAPH_CORE_VALUES_CSV"
   fi
 fi

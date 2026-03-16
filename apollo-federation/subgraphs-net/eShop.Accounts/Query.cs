@@ -1,13 +1,11 @@
+using HotChocolate;
 using HotChocolate.Types;
-using HotChocolate.Types.Composite;
-using HotChocolate.Types.Relay;
 
 namespace eShop.Accounts;
 
-[QueryType]
-public static partial class UserQueries
+public class Query
 {
-    private static readonly List<User> s_users =
+    internal static readonly List<User> Users =
     [
         new() { Id = "1", Name = "Uri Goldshtein", Username = "urigo", Birthday = 1234567890 },
         new() { Id = "2", Name = "Dotan Simha", Username = "dotansimha", Birthday = 1234567890 },
@@ -17,10 +15,10 @@ public static partial class UserQueries
         new() { Id = "6", Name = "Laurin Quast", Username = "laurin", Birthday = 1234567890 }
     ];
 
-    public static User? GetMe() => s_users[0];
+    public User? GetMe() => Users[0];
 
-    [Lookup]
-    public static User? GetUser([ID] string id) => s_users.FirstOrDefault(u => u.Id == id);
+    public User? GetUser([GraphQLType(typeof(IdType))] string id)
+        => Users.FirstOrDefault(u => u.Id == id);
 
-    public static List<User> GetUsers() => s_users;
+    public List<User> GetUsers() => Users;
 }

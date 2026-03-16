@@ -22,7 +22,7 @@ on:
           - hive-gateway-router-runtime
           - hive-router
           - hotchocolate
-          - hotchocolate-rust
+          - hotchocolate-aot
       runs:
         description: 'Number of benchmark runs per gateway'
         required: false
@@ -60,73 +60,123 @@ jobs:
           aliases = {
               "hc": "hotchocolate",
               "hc-rust": "hotchocolate-rust",
+              "hc-net": "hotchocolate-net",
+              "hc-aot": "hotchocolate-aot",
+              "hc-aot-rust": "hotchocolate-aot-rust",
+              "hc-aot-net": "hotchocolate-aot-net",
           }
           selected = aliases.get(selected, selected)
 
-          gateways = [
+          selected_gateway = selected
+          selected_subgraph_tech = None
+          if selected.endswith("-rust"):
+              selected_gateway = selected[:-5]
+              selected_subgraph_tech = "rust"
+          elif selected.endswith("-net"):
+              selected_gateway = selected[:-4]
+              selected_subgraph_tech = ".net"
+
+          base_gateways = [
               {
                   "path": "apollo-federation/gateways/apollo-gateway",
                   "name": "apollo-gateway",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-apollo-gateway",
               },
               {
                   "path": "apollo-federation/gateways/apollo-router",
                   "name": "apollo-router",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-apollo-router",
               },
               {
                   "path": "apollo-federation/gateways/cosmo",
                   "name": "cosmo",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-cosmo",
               },
               {
                   "path": "apollo-federation/gateways/grafbase",
                   "name": "grafbase",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-grafbase",
               },
               {
                   "path": "apollo-federation/gateways/hive-gateway",
                   "name": "hive-gateway",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-hive-gateway",
               },
               {
                   "path": "apollo-federation/gateways/hive-gateway-router-runtime",
                   "name": "hive-gateway-router-runtime",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-hive-gateway-router-runtime",
               },
               {
                   "path": "apollo-federation/gateways/hive-router",
                   "name": "hive-router",
-                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
                   "gateway_artifact": "prebuilt-gateway-hive-router",
               },
               {
                   "path": "composite-schema/gateways/hotchocolate",
                   "name": "hotchocolate",
-                  "subgraphs": "subgraphs-net",
-                  "display_name": "hotchocolate (.net subgraphs)",
-                  "subgraphs_artifact": "prebuilt-composite-schema-subgraphs-net",
                   "gateway_artifact": "prebuilt-gateway-hotchocolate",
               },
               {
-                  "path": "composite-schema/gateways/hotchocolate",
-                  "name": "hotchocolate-rust",
-                  "subgraphs": "subgraphs-rust",
-                  "subgraphs_artifact": "prebuilt-composite-schema-subgraphs-rust",
-                  "gateway_artifact": "prebuilt-gateway-hotchocolate",
+                  "path": "composite-schema/gateways/hotchocolate-aot",
+                  "name": "hotchocolate-aot",
+                  "gateway_artifact": "prebuilt-gateway-hotchocolate-aot",
               },
           ]
+
+          subgraph_variants_by_category = {
+              "apollo-federation": [
+                  {
+                      "dir": "subgraphs-rust",
+                      "tech": "rust",
+                      "artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                      "suffix": "rust",
+                  },
+                  {
+                      "dir": "subgraphs-net",
+                      "tech": ".net",
+                      "artifact": "prebuilt-apollo-federation-subgraphs-net",
+                      "suffix": "net",
+                  },
+              ],
+              "composite-schema": [
+                  {
+                      "dir": "subgraphs-rust",
+                      "tech": "rust",
+                      "artifact": "prebuilt-composite-schema-subgraphs-rust",
+                      "suffix": "rust",
+                  },
+                  {
+                      "dir": "subgraphs-net",
+                      "tech": ".net",
+                      "artifact": "prebuilt-composite-schema-subgraphs-net",
+                      "suffix": "net",
+                  },
+              ],
+          }
+
+          gateways = []
+          for gateway in base_gateways:
+              category = gateway["path"].split("/", 1)[0]
+              variants = subgraph_variants_by_category.get(category, [])
+              for variant in variants:
+                  gateways.append({
+                      "path": gateway["path"],
+                      "name": f"{gateway['name']}-{variant['suffix']}",
+                      "base_name": gateway["name"],
+                      "subgraphs": variant["dir"],
+                      "subgraph_tech": variant["tech"],
+                      "display_name": f"{gateway['name']} ({variant['tech']} subgraphs)",
+                      "subgraphs_artifact": variant["artifact"],
+                      "gateway_artifact": gateway["gateway_artifact"],
+                  })
 
           if selected == "all":
               chosen = gateways
           else:
-              chosen = [entry for entry in gateways if entry["name"] == selected]
+              chosen = [entry for entry in gateways if entry["base_name"] == selected_gateway]
+              if selected_subgraph_tech:
+                  chosen = [entry for entry in chosen if entry["subgraph_tech"] == selected_subgraph_tech]
 
           if not chosen:
               print(f"Error: no gateway entries match selection {selected!r}", file=sys.stderr)
@@ -150,7 +200,7 @@ jobs:
 
           print("Selected gateway entries:")
           for entry in chosen:
-              print(f" - {entry['name']}")
+              print(f" - {entry['base_name']} [{entry['subgraph_tech']}]")
           PY
 
   build-subgraphs:
@@ -161,6 +211,8 @@ jobs:
         subgraphs:
           - path: apollo-federation/subgraphs-rust
             artifact: prebuilt-apollo-federation-subgraphs-rust
+          - path: apollo-federation/subgraphs-net
+            artifact: prebuilt-apollo-federation-subgraphs-net
           - path: composite-schema/subgraphs-net
             artifact: prebuilt-composite-schema-subgraphs-net
           - path: composite-schema/subgraphs-rust
@@ -266,6 +318,9 @@ jobs:
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
           fi
+          if [[ -f composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway ]]; then
+            chmod +x composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway
+          fi
 
       - name: Download prebuilt subgraphs
         uses: actions/download-artifact@v4
@@ -309,6 +364,7 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
           USE_PREBUILT_SUBGRAPHS: "1"
           USE_PREBUILT_GATEWAY: "1"
 
@@ -379,6 +435,9 @@ jobs:
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
           fi
+          if [[ -f composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway ]]; then
+            chmod +x composite-schema/gateways/hotchocolate-aot/publish-aot/eShop.Gateway
+          fi
 
       - name: Download prebuilt subgraphs
         uses: actions/download-artifact@v4
@@ -422,6 +481,7 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ramping
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
           USE_PREBUILT_SUBGRAPHS: "1"
           USE_PREBUILT_GATEWAY: "1"
 
