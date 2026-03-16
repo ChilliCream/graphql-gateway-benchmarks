@@ -257,15 +257,27 @@ fi
 # 'perfrunner' user. This ensures third-party gateway binaries cannot access
 # root or system resources. Cleanup: 'sudo pkill -u perfrunner'.
 
+PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:/home/perfrunner/.nvm/versions/node/$(ls /home/perfrunner/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:${PATH}"
+
 run_as_perfrunner() {
   if id perfrunner &>/dev/null; then
     sudo -u perfrunner \
       HOME="/home/perfrunner" \
-      PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:/home/perfrunner/.nvm/versions/node/$(ls /home/perfrunner/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:${PATH}" \
+      PATH="$PERFRUNNER_PATH" \
       FORK="${FORK:-}" \
       -- "$@"
   else
     "$@"
+  fi
+}
+
+# Combine taskset + perfrunner: run a command as perfrunner with CPU pinning
+run_pinned_as_perfrunner() {
+  local cpuset="$1"; shift
+  if [[ "$USE_PINNING" == true && -n "$cpuset" ]]; then
+    run_as_perfrunner taskset -c "$cpuset" "$@"
+  else
+    run_as_perfrunner "$@"
   fi
 }
 
@@ -283,7 +295,7 @@ echo "=== Installing gateway dependencies ==="
 
 echo ""
 echo "=== Starting subgraphs ==="
-(cd "$SUBGRAPHS_DIR" && maybe_taskset "$SUBGRAPH_CPUSET" run_as_perfrunner bash start.sh) &
+(cd "$SUBGRAPHS_DIR" && run_pinned_as_perfrunner "$SUBGRAPH_CPUSET" bash start.sh) &
 SUBGRAPH_PID=$!
 echo "Subgraphs PID: $SUBGRAPH_PID"
 
@@ -294,7 +306,7 @@ sleep 3
 
 echo ""
 echo "=== Starting gateway ==="
-(cd "$GATEWAY_DIR" && maybe_taskset "$GATEWAY_CPUSET" run_as_perfrunner bash start.sh) &
+(cd "$GATEWAY_DIR" && run_pinned_as_perfrunner "$GATEWAY_CPUSET" bash start.sh) &
 GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
 
