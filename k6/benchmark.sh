@@ -91,50 +91,12 @@ for script in "$GATEWAY_DIR/start.sh" "$GATEWAY_DIR/install.sh" \
   fi
 done
 
-# ---- Defensive k6 install ---------------------------------------------------
+# ---- Check required tools ----------------------------------------------------
 
 if ! command -v k6 &>/dev/null; then
-  echo "k6 not found. Installing..."
-  case "$(uname -s)" in
-    Darwin)
-      brew install k6
-      ;;
-    Linux)
-      sudo gpg -k
-      sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-        --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-      echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
-        | sudo tee /etc/apt/sources.list.d/k6.list
-      sudo apt-get update
-      sudo apt-get install -y k6
-      ;;
-    *)
-      echo "Error: unsupported OS for automatic k6 install. Install k6 manually."
-      exit 1
-      ;;
-  esac
+  echo "Error: k6 not found. Run setup-perfrunner.sh on this machine first."
+  exit 1
 fi
-
-# ---- Kill stale processes from previous runs ---------------------------------
-# On shared runners, processes from a prior benchmark job may still be alive.
-
-echo ""
-echo "=== Cleaning up stale processes ==="
-STALE_FOUND=false
-for pattern in "k6 run" "./router " "npm start" "tsx " "npx hive-gateway" "dotnet.*eShop" "./cosmo" "./grafbase" "/subgraphs$"; do
-  while IFS= read -r line; do
-    pid=$(echo "$line" | awk '{print $1}')
-    if [[ -n "$pid" ]]; then
-      STALE_FOUND=true
-      echo "  Killing stale process $pid: $(echo "$line" | awk '{for(i=2;i<=NF;i++) printf "%s ", $i; print ""}')"
-      kill "$pid" 2>/dev/null || true
-    fi
-  done < <(pgrep -af "$pattern" 2>/dev/null | grep -v "$$" | grep -v grep || true)
-done
-if [[ "$STALE_FOUND" == false ]]; then
-  echo "  No stale processes found"
-fi
-sleep 1
 
 # ---- Cleanup trap ------------------------------------------------------------
 
@@ -290,43 +252,38 @@ if [[ -n "$GATEWAY_CPUSET" ]]; then
   echo "FORK=$FORK (JS gateway worker count)"
 fi
 
-# ---- Install dependencies ---------------------------------------------------
+# ---- Helper: run as perfrunner -----------------------------------------------
+# Gateways, subgraphs, and their install scripts run as the unprivileged
+# 'perfrunner' user. This ensures third-party gateway binaries cannot access
+# root or system resources. Cleanup: 'sudo pkill -u perfrunner'.
 
-# Helper: source tool environments that may have been installed in subshells
-source_tool_envs() {
-  [[ -s "$HOME/.nvm/nvm.sh" ]] && . "$HOME/.nvm/nvm.sh" || true
-  [[ -s "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env" || true
-  [[ -d "$HOME/.dotnet" ]] && export PATH="$HOME/.dotnet:$PATH" || true
+run_as_perfrunner() {
+  if id perfrunner &>/dev/null; then
+    sudo -u perfrunner \
+      HOME="/home/perfrunner" \
+      PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:/home/perfrunner/.nvm/versions/node/$(ls /home/perfrunner/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:${PATH}" \
+      FORK="${FORK:-}" \
+      -- "$@"
+  else
+    "$@"
+  fi
 }
+
+# ---- Install dependencies ---------------------------------------------------
 
 echo ""
 echo "=== Installing subgraph dependencies ==="
-(cd "$SUBGRAPHS_DIR" && bash install.sh)
-source_tool_envs
+(cd "$SUBGRAPHS_DIR" && run_as_perfrunner bash install.sh)
 
 echo ""
 echo "=== Installing gateway dependencies ==="
-(cd "$GATEWAY_DIR" && bash install.sh)
-source_tool_envs
-
-# ---- Kill anything on benchmark ports ----------------------------------------
-# Safety net: ensure no stale process is occupying the gateway or subgraph ports.
-# All gateways MUST listen on port 5220. Subgraphs use 5221-5224.
-
-for port in 5220 5221 5222 5223 5224; do
-  STALE_PORT_PID=$(lsof -ti :"$port" 2>/dev/null || true)
-  if [[ -n "$STALE_PORT_PID" ]]; then
-    echo "WARNING: Killing stale process(es) on port $port: $STALE_PORT_PID"
-    echo "$STALE_PORT_PID" | xargs kill 2>/dev/null || true
-  fi
-done
-sleep 1
+(cd "$GATEWAY_DIR" && run_as_perfrunner bash install.sh)
 
 # ---- Start subgraphs --------------------------------------------------------
 
 echo ""
 echo "=== Starting subgraphs ==="
-(cd "$SUBGRAPHS_DIR" && maybe_taskset "$SUBGRAPH_CPUSET" bash start.sh) &
+(cd "$SUBGRAPHS_DIR" && maybe_taskset "$SUBGRAPH_CPUSET" run_as_perfrunner bash start.sh) &
 SUBGRAPH_PID=$!
 echo "Subgraphs PID: $SUBGRAPH_PID"
 
@@ -337,7 +294,7 @@ sleep 3
 
 echo ""
 echo "=== Starting gateway ==="
-(cd "$GATEWAY_DIR" && maybe_taskset "$GATEWAY_CPUSET" bash start.sh) &
+(cd "$GATEWAY_DIR" && maybe_taskset "$GATEWAY_CPUSET" run_as_perfrunner bash start.sh) &
 GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
 
