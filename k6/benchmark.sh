@@ -743,9 +743,11 @@ json.dump({
 
   echo ""
   echo "=== Starting monitor ==="
-  bash "$REPO_ROOT/k6/monitor.sh" \
+  maybe_taskset "$SYSTEM_CPUSET" bash "$REPO_ROOT/k6/monitor.sh" \
     -p "$GATEWAY_METRIC_PID" \
     -k "$K6_API_ADDR" \
+    -K "$K6_CPUSET" \
+    -S "$SUBGRAPH_CPUSET" \
     -o "$RESULT_DIR/data.csv" \
     -i 0.2 &
   MONITOR_PID=$!
@@ -780,7 +782,10 @@ json.dump({
   # ---- Memory stats for this run ----------------------------------------------
 
   END_RSS_KB=$(gateway_rss_kb)
-  PEAK_RSS_KB=$(awk -F, 'NR>1 && $7+0 > max {max=$7+0} END {print max+0}' "$RESULT_DIR/data.csv")
+  PEAK_RSS_KB=$(awk -F, 'NR>1 && $NF+0 > max {max=$NF+0} END {print max+0}' "$RESULT_DIR/data.csv")
+  AVG_K6_CORE_CPU=$(awk -F, 'NR>1{sum+=$7;n++} END{if(n) printf "%.2f", sum/n; else print "0.00"}' "$RESULT_DIR/data.csv")
+  AVG_SUBGRAPH_CORE_CPU=$(awk -F, 'NR>1{sum+=$8;n++} END{if(n) printf "%.2f", sum/n; else print "0.00"}' "$RESULT_DIR/data.csv")
+  EFFICIENCY_SCORE=$(awk -v k="$AVG_K6_CORE_CPU" -v s="$AVG_SUBGRAPH_CORE_CPU" 'BEGIN{if (s <= 0) printf "0.00"; else printf "%.2f", (k/s)*100.0}')
 
   # Persist memory stats for report generation
   python3 -c "
@@ -788,9 +793,12 @@ import json, sys
 json.dump({
     'idle_rss_kb': int(sys.argv[1]),
     'peak_rss_kb': int(sys.argv[2]),
-    'end_rss_kb': int(sys.argv[3])
-}, open(sys.argv[4], 'w'), indent=2)
-" "$IDLE_RSS_KB" "$PEAK_RSS_KB" "$END_RSS_KB" "$RESULT_DIR/memory.json"
+    'end_rss_kb': int(sys.argv[3]),
+    'avg_k6_core_cpu_pct': float(sys.argv[4]),
+    'avg_subgraph_core_cpu_pct': float(sys.argv[5]),
+    'efficiency_score': float(sys.argv[6])
+}, open(sys.argv[7], 'w'), indent=2)
+" "$IDLE_RSS_KB" "$PEAK_RSS_KB" "$END_RSS_KB" "$AVG_K6_CORE_CPU" "$AVG_SUBGRAPH_CORE_CPU" "$EFFICIENCY_SCORE" "$RESULT_DIR/memory.json"
 
   echo ""
   echo "=== Run $RUN complete ==="
@@ -798,6 +806,7 @@ json.dump({
   echo "  k6 summary:   $RESULT_DIR/k6_summary.json"
   echo "  k6 text:      $RESULT_DIR/k6_summary.txt"
   echo "  Memory:       idle=$((IDLE_RSS_KB / 1024))MB  peak=$((PEAK_RSS_KB / 1024))MB  end=$((END_RSS_KB / 1024))MB"
+  echo "  Core Pressure: k6_avg=${AVG_K6_CORE_CPU}%  subgraphs_avg=${AVG_SUBGRAPH_CORE_CPU}%  score=${EFFICIENCY_SCORE}"
 
 done
 
@@ -818,6 +827,7 @@ if [[ "$BENCH_RUNS" -gt 1 ]]; then
 
   # Collect RPS from all k6_summary.json files
   RPS_VALUES=()
+  EFFICIENCY_VALUES=()
   for result_dir in "$RESULTS_BASE"/*/; do
     if [[ -f "$result_dir/k6_summary.json" ]]; then
       RPS=$(python3 -c "
@@ -826,6 +836,14 @@ d = json.load(open(sys.argv[1]))
 print(d.get('metrics',{}).get('http_reqs',{}).get('values',{}).get('rate',0))
 " "$result_dir/k6_summary.json")
       RPS_VALUES+=("$RPS")
+    fi
+    if [[ -f "$result_dir/memory.json" ]]; then
+      SCORE=$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(d.get('efficiency_score', 0))
+" "$result_dir/memory.json")
+      EFFICIENCY_VALUES+=("$SCORE")
     fi
   done
 
@@ -848,5 +866,20 @@ print(f'  CV:     {cv:.2f}%')
 if cv > 3:
     print(f'  ⚠️  CV > 3% — results may be unreliable')
 " "${RPS_VALUES[@]}"
+  fi
+
+  if [[ ${#EFFICIENCY_VALUES[@]} -gt 0 ]]; then
+    python3 -c "
+import sys, statistics
+vals = [float(x) for x in sys.argv[1:]]
+vals.sort()
+n = len(vals)
+median = vals[n//2] if n % 2 == 1 else (vals[n//2-1] + vals[n//2]) / 2
+mean = statistics.mean(vals)
+print(f'  Efficiency score (k6/subgraphs * 100):')
+print(f'    Values: {\" → \".join(f\"{v:.2f}\" for v in vals)}')
+print(f'    Median: {median:.2f}')
+print(f'    Mean:   {mean:.2f}')
+" "${EFFICIENCY_VALUES[@]}"
   fi
 fi
