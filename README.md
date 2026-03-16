@@ -4,16 +4,21 @@ Performance benchmarks comparing GraphQL gateway implementations across federati
 
 **Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Ramping Load](./RESULTS_RAMPING.md)
 
-## Setup
+## Benchmark setup
 
-Each benchmark runs a gateway against 4 subgraphs (Accounts, Inventory, Products, Reviews) and executes a heavy nested query. The subgraph implementation differs per schema approach:
+Each benchmark runs a gateway against 4 subgraphs (`Accounts`, `Inventory`, `Products`, `Reviews`) and executes a heavy nested query.
+
+Subgraph variants:
+- `subgraphs-rust` = Rust (`async-graphql` + `axum`)
+- `subgraphs-net` = .NET (`HotChocolate`)
+
+Both benchmark families support both subgraph variants:
+- `apollo-federation/*` gateways can run with Rust or .NET subgraphs
+- `composite-schema/*` gateways can run with Rust or .NET subgraphs
+
+## Gateways
 
 ### Apollo Federation
-
-Subgraphs are built with Rust using [async-graphql](https://github.com/async-graphql/async-graphql) + [axum](https://github.com/tokio-rs/axum).
-
-**Gateways:**
-
 - [Apollo Gateway](./apollo-federation/gateways/apollo-gateway) (Node.js)
 - [Apollo Router](./apollo-federation/gateways/apollo-router) (Rust)
 - [Cosmo](./apollo-federation/gateways/cosmo) (Go)
@@ -23,24 +28,21 @@ Subgraphs are built with Rust using [async-graphql](https://github.com/async-gra
 - [Hive Router](./apollo-federation/gateways/hive-router) (Rust)
 
 ### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
-
-Subgraphs are built with .NET using [HotChocolate](https://github.com/ChilliCream/graphql-platform).
-
-**Gateways:**
-
 - [HotChocolate](./composite-schema/gateways/hotchocolate) (.NET)
+- [HotChocolate AOT](./composite-schema/gateways/hotchocolate-aot) (.NET Native AOT)
 
 ## Running benchmarks locally
 
 ### Prerequisites
 
-- **k6** - auto-installed if missing (via Homebrew on macOS, apt on Linux)
+- **k6**
 - **jq** - required by the monitor script
 - **python3** - used for JSON parsing
 - **curl** - used for health checks
-- Gateway-specific dependencies are installed automatically by each gateway's `install.sh`
+- **bash**, **taskset** (optional, Linux only for pinning)
+- Gateway dependencies are handled by each gateway's `install.sh`
 
-### Run a benchmark
+### Run
 
 ```bash
 ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|ramping]
@@ -49,24 +51,29 @@ Subgraphs are built with .NET using [HotChocolate](https://github.com/ChilliCrea
 Examples:
 
 ```bash
-# HotChocolate gateway, constant load (default), .NET subgraphs
+# composite-schema + .NET subgraphs (default)
 ./k6/benchmark.sh composite-schema/gateways/hotchocolate
 
-# HotChocolate gateway with Rust subgraphs
+# composite-schema + Rust subgraphs
 ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
 
-# Cosmo gateway, ramping load
+# apollo-federation + .NET subgraphs
+./k6/benchmark.sh apollo-federation/gateways/apollo-router subgraphs-net
+
+# ramping mode
 ./k6/benchmark.sh apollo-federation/gateways/cosmo ramping
 ```
 
 ### What happens
 
-1. Installs dependencies for the subgraphs and gateway (`install.sh`)
-2. Starts subgraphs in the background
-3. Starts the gateway and waits for it to become healthy
-4. Runs a warmup phase (15s by default)
-5. Starts a CPU/memory monitor, then runs the k6 benchmark (120s by default)
-6. Saves results and cleans up all processes
+1. Resolves subgraph directory (`subgraphs-rust` / `subgraphs-net`)
+2. Builds subgraphs (`subgraphs/build.sh`) unless `USE_PREBUILT_SUBGRAPHS=1`
+3. Installs/builds gateway (`gateway/install.sh`) unless `USE_PREBUILT_GATEWAY=1`
+4. Starts subgraphs and gateway (optionally CPU-pinned)
+5. Executes one full-duration warmup run (discarded)
+6. Executes measured runs (`BENCH_RUNS`, default `10`)
+7. Captures monitor + k6 summaries for each run
+8. Prints run statistics (median/mean/CV and CPU usage medians)
 
 ### Configuration
 
@@ -74,14 +81,24 @@ Environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `WARMUP_SECONDS` | `15` | Warmup duration before measurement |
 | `MEASURE_SECONDS` | `120` | Benchmark measurement duration |
-| `BENCH_VUS` | `50` (constant) / `500` (ramping) | Number of virtual users |
-| `BENCH_RUNS` | `10` | Iterations per benchmark (median selected for results) |
+| `BENCH_RUNS` | `10` | Measured runs (plus one warmup run) |
+| `BENCH_VUS` | `50` constant / `500` ramping | VU target passed to `k6/k6.js` |
+| `BENCH_RAMP_FLOOR_VUS` | `50` | Ramping floor VUs for ramping mode |
+| `BENCH_DISPLAY_NAME` | _(auto)_ | Override report display name |
+| `BENCH_SUBGRAPH_TECH` | _(auto)_ | Explicit subgraph tech label (`rust` / `.net`) |
+| `USE_PREBUILT_SUBGRAPHS` | `0` | Skip `build.sh` and expect prebuilt subgraph artifact |
+| `USE_PREBUILT_GATEWAY` | `0` | Skip `install.sh` and expect prebuilt gateway artifact |
 
 ### CPU pinning
 
-On Linux with `taskset` available, the script reads `profiles.json` to pin k6, the gateway, and subgraphs to specific CPU cores. Profiles are defined for 8-core and 16-core machines. On macOS, CPU pinning is skipped.
+On Linux with `taskset`, `profiles.json` is used to pin:
+- `system`
+- `k6`
+- `gateway`
+- `subgraphs`
+
+Profile selection is based on logical core count (8 or 16 profile).
 
 ### Output
 
@@ -89,10 +106,34 @@ Each run produces a timestamped results directory:
 
 ```text
 <gateway-dir>/results/<timestamp>/
-  data.csv          # time-series: CPU, RSS, VUs, RPS, P95, success rate
+  data.csv          # monitor time series
+  metadata.json     # gateway/subgraph/machine metadata
+  memory.json       # idle/peak/end RSS + avg core usage (k6/subgraphs)
   k6_summary.json   # full k6 metrics (machine-readable)
   k6_summary.txt    # k6 summary (human-readable)
 ```
+
+## GitHub Actions workflow
+
+Workflow: [benchmark.yml](./.github/workflows/benchmark.yml)
+
+- Triggers:
+  - `workflow_dispatch`
+  - scheduled daily at `04:00 UTC`
+- Dynamic matrix:
+  - Builds gateway matrix from selected input
+  - Expands each gateway into `rust` + `.net` subgraph variants
+- Build stages on `ubuntu-latest`:
+  - `build-subgraphs` (prebuilt artifacts)
+  - `build-gateways` (prebuilt artifacts)
+- Benchmark stages on dedicated benchmark runner:
+  - `benchmark-constant`
+  - `benchmark-ramping` (runs after constant completes)
+- Result generation:
+  - `generate-results-constant`
+  - `generate-results-ramping`
+  - final `benchmark-summary` job publishes both result docs in the run summary
+- Result documents are committed back to the branch by the generator jobs
 
 ## Acknowledgments
 
