@@ -12,4 +12,6 @@ fi
 
 cd "$PUBLISH_DIR"
 export ASPNETCORE_ENVIRONMENT=Production
+export ASPNETCORE_URLS="http://0.0.0.0:5220"
+export ASPNETCORE_HTTP_PORTS="5220"
 exec ./eShop.Gateway > "$SCRIPT_DIR/gateway_log.txt" 2>&1
