@@ -283,12 +283,26 @@ refresh_perfrunner_path() {
 
   PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:${PATH}"
 
-  # Prefer the newest nvm-managed Node bin if available, but don't fail if nvm
-  # is missing or no Node version has been installed for perfrunner yet.
-  for node_dir in /home/perfrunner/.nvm/versions/node/*; do
-    [[ -d "$node_dir" ]] || continue
-    node_bin="$node_dir/bin"
-  done
+  # Resolve Node bin as perfrunner to avoid permission/path drift between
+  # github-runner and perfrunner homes.
+  if id perfrunner &>/dev/null; then
+    node_bin="$(sudo -n -u perfrunner -- bash -lc '
+      latest=""
+      for d in "$HOME"/.nvm/versions/node/*/bin; do
+        [[ -x "$d/node" ]] || continue
+        latest="$d"
+      done
+      printf "%s" "$latest"
+    ' 2>/dev/null || true)"
+  fi
+
+  # Fallback for local/non-sudo environments.
+  if [[ -z "$node_bin" ]]; then
+    for node_dir in /home/perfrunner/.nvm/versions/node/*; do
+      [[ -d "$node_dir" ]] || continue
+      node_bin="$node_dir/bin"
+    done
+  fi
 
   if [[ -n "$node_bin" ]]; then
     PERFRUNNER_PATH="$node_bin:$PERFRUNNER_PATH"
