@@ -166,6 +166,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
       - name: Build subgraphs
         run: |
           chmod +x "${{ matrix.subgraphs.path }}/build.sh"
@@ -187,6 +192,11 @@ jobs:
     name: build-${{ matrix.gateway.artifact }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
 
       - name: Build gateway
         run: |
