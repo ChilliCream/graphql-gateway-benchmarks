@@ -4,7 +4,10 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REQUIRED_DOTNET_MAJOR=10
-mapfile -t CSPROJ_FILES < <(find "$SCRIPT_DIR" -mindepth 2 -maxdepth 2 -type f -name '*.csproj' | sort)
+CSPROJ_FILES=()
+while IFS= read -r csproj; do
+  [[ -n "$csproj" ]] && CSPROJ_FILES+=("$csproj")
+done < <(find "$SCRIPT_DIR" -mindepth 2 -maxdepth 2 -type f -name '*.csproj' | sort)
 
 if [[ ${#CSPROJ_FILES[@]} -eq 0 ]]; then
   echo "ERROR: no .csproj files found under $SCRIPT_DIR"

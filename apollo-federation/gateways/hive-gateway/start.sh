@@ -6,4 +6,4 @@ if [[ -n "${FORK:-}" ]]; then
   FORK_ARGS="--fork $FORK"
 fi
 
-NODE_ENV=production npx hive-gateway supergraph supergraph.graphql --jit --port 5220 $FORK_ARGS > ./gateway_log.txt 2>&1
+NODE_ENV=production npx hive-gateway supergraph "supergraph.graphql" --jit --port 5220 $FORK_ARGS > ./gateway_log.txt 2>&1

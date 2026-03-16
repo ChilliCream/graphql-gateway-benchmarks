@@ -5,5 +5,5 @@ exec env -i \
   RUST_LOG=info \
   PORT=5220 \
   HIVE__SUPERGRAPH__SOURCE=file \
-  HIVE__SUPERGRAPH__PATH=./supergraph.graphql \
+  HIVE__SUPERGRAPH__PATH="./supergraph.graphql" \
   ./hive_router > ./gateway_log.txt 2>&1

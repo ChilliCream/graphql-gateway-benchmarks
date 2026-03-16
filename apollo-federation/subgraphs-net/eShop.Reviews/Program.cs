@@ -13,5 +13,12 @@ builder.Services
     .AddType<eShop.Reviews.Product>();
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    context.Request.Headers.Accept = "application/json";
+    await next();
+});
+
 app.MapGraphQL();
 await app.RunAsync();

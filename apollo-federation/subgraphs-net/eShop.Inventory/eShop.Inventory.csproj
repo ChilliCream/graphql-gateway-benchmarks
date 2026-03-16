@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="HotChocolate.AspNetCore" Version="16.0.0-p.11.10" />
-    <PackageReference Include="HotChocolate.ApolloFederation" Version="16.0.0-p.11.10" />
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.0.0-p.11.46" />
+    <PackageReference Include="HotChocolate.ApolloFederation" Version="16.0.0-p.11.46" />
   </ItemGroup>
 </Project>

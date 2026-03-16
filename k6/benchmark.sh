@@ -335,6 +335,8 @@ run_as_perfrunner() {
       env HOME="/home/perfrunner" \
           PATH="$PERFRUNNER_PATH" \
           FORK="${FORK:-}" \
+          BENCH_SUBGRAPH_TECH="${BENCH_SUBGRAPH_TECH:-}" \
+          BENCH_SUBGRAPH_VARIANT="${BENCH_SUBGRAPH_VARIANT:-}" \
       "$@"
   else
     "$@"
@@ -683,6 +685,8 @@ elif [[ "$SUBGRAPH_VARIANT" == "subgraphs-net" ]]; then
 else
   SUBGRAPH_TECH="$SUBGRAPH_VARIANT"
 fi
+export BENCH_SUBGRAPH_TECH="$SUBGRAPH_TECH"
+export BENCH_SUBGRAPH_VARIANT="$SUBGRAPH_VARIANT"
 if [[ -n "${BENCH_DISPLAY_NAME:-}" ]]; then
   DISPLAY_NAME="$BENCH_DISPLAY_NAME"
 else

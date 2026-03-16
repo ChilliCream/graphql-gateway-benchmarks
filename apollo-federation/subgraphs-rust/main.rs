@@ -32,36 +32,80 @@ async fn delay_middleware(req: Request, next: Next) -> Response {
 #[tokio::main]
 async fn main() {
     let host = var("HOST").unwrap_or("0.0.0.0".to_owned());
-    let port = var("PORT").unwrap_or("5221".to_owned());
+    let accounts_port = var("ACCOUNTS_PORT")
+        .or_else(|_| var("PORT"))
+        .unwrap_or("5221".to_owned());
+    let inventory_port = var("INVENTORY_PORT").unwrap_or("5222".to_owned());
+    let products_port = var("PRODUCTS_PORT").unwrap_or("5223".to_owned());
+    let reviews_port = var("REVIEWS_PORT").unwrap_or("5224".to_owned());
 
-    let app = Router::new()
+    let accounts_app = Router::new()
         .route(
-            "/accounts",
+            "/graphql",
             post_service(GraphQL::new(accounts::get_subgraph())),
         )
+        .route("/health", axum::routing::get(|| async { "OK" }))
+        .route_layer(middleware::from_fn(delay_middleware));
+
+    let inventory_app = Router::new()
         .route(
-            "/inventory",
+            "/graphql",
             post_service(GraphQL::new(inventory::get_subgraph())),
         )
+        .route("/health", axum::routing::get(|| async { "OK" }))
+        .route_layer(middleware::from_fn(delay_middleware));
+
+    let products_app = Router::new()
         .route(
-            "/products",
+            "/graphql",
             post_service(GraphQL::new(products::get_subgraph())),
         )
+        .route("/health", axum::routing::get(|| async { "OK" }))
+        .route_layer(middleware::from_fn(delay_middleware));
+
+    let reviews_app = Router::new()
         .route(
-            "/reviews",
+            "/graphql",
             post_service(GraphQL::new(reviews::get_subgraph())),
         )
         .route("/health", axum::routing::get(|| async { "OK" }))
         .route_layer(middleware::from_fn(delay_middleware));
 
-    println!("Starting server on http://localhost:5221");
+    println!("Starting accounts subgraph on http://localhost:{accounts_port}/graphql");
+    println!("Starting inventory subgraph on http://localhost:{inventory_port}/graphql");
+    println!("Starting products subgraph on http://localhost:{products_port}/graphql");
+    println!("Starting reviews subgraph on http://localhost:{reviews_port}/graphql");
 
-    axum::serve(
-        TcpListener::bind(&format!("{}:{}", host, port))
+    let accounts_server = axum::serve(
+        TcpListener::bind(format!("{host}:{accounts_port}"))
             .await
             .unwrap(),
-        app,
+        accounts_app,
+    );
+    let inventory_server = axum::serve(
+        TcpListener::bind(format!("{host}:{inventory_port}"))
+            .await
+            .unwrap(),
+        inventory_app,
+    );
+    let products_server = axum::serve(
+        TcpListener::bind(format!("{host}:{products_port}"))
+            .await
+            .unwrap(),
+        products_app,
+    );
+    let reviews_server = axum::serve(
+        TcpListener::bind(format!("{host}:{reviews_port}"))
+            .await
+            .unwrap(),
+        reviews_app,
+    );
+
+    tokio::try_join!(
+        accounts_server,
+        inventory_server,
+        products_server,
+        reviews_server
     )
-    .await
     .unwrap();
 }
