@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       gateways: ${{ steps.build.outputs.gateways }}
+      gateway_builds: ${{ steps.build.outputs.gateway_builds }}
     steps:
       - name: Build gateway matrix
         id: build
@@ -60,26 +61,62 @@ jobs:
           selected = aliases.get(selected, selected)
 
           gateways = [
-              {"path": "apollo-federation/gateways/apollo-gateway", "name": "apollo-gateway"},
-              {"path": "apollo-federation/gateways/apollo-router", "name": "apollo-router"},
-              {"path": "apollo-federation/gateways/cosmo", "name": "cosmo"},
-              {"path": "apollo-federation/gateways/grafbase", "name": "grafbase"},
-              {"path": "apollo-federation/gateways/hive-gateway", "name": "hive-gateway"},
+              {
+                  "path": "apollo-federation/gateways/apollo-gateway",
+                  "name": "apollo-gateway",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-apollo-gateway",
+              },
+              {
+                  "path": "apollo-federation/gateways/apollo-router",
+                  "name": "apollo-router",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-apollo-router",
+              },
+              {
+                  "path": "apollo-federation/gateways/cosmo",
+                  "name": "cosmo",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-cosmo",
+              },
+              {
+                  "path": "apollo-federation/gateways/grafbase",
+                  "name": "grafbase",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-grafbase",
+              },
+              {
+                  "path": "apollo-federation/gateways/hive-gateway",
+                  "name": "hive-gateway",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-hive-gateway",
+              },
               {
                   "path": "apollo-federation/gateways/hive-gateway-router-runtime",
                   "name": "hive-gateway-router-runtime",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-hive-gateway-router-runtime",
               },
-              {"path": "apollo-federation/gateways/hive-router", "name": "hive-router"},
+              {
+                  "path": "apollo-federation/gateways/hive-router",
+                  "name": "hive-router",
+                  "subgraphs_artifact": "prebuilt-apollo-federation-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-hive-router",
+              },
               {
                   "path": "composite-schema/gateways/hotchocolate",
                   "name": "hotchocolate",
                   "subgraphs": "subgraphs-net",
                   "display_name": "hotchocolate (.net subgraphs)",
+                  "subgraphs_artifact": "prebuilt-composite-schema-subgraphs-net",
+                  "gateway_artifact": "prebuilt-gateway-hotchocolate",
               },
               {
                   "path": "composite-schema/gateways/hotchocolate",
                   "name": "hotchocolate-rust",
                   "subgraphs": "subgraphs-rust",
+                  "subgraphs_artifact": "prebuilt-composite-schema-subgraphs-rust",
+                  "gateway_artifact": "prebuilt-gateway-hotchocolate",
               },
           ]
 
@@ -93,16 +130,81 @@ jobs:
               sys.exit(1)
 
           matrix_json = json.dumps(chosen, separators=(",", ":"))
+          builds_by_artifact = {}
+          for entry in chosen:
+              artifact = entry["gateway_artifact"]
+              if artifact in builds_by_artifact:
+                  continue
+              builds_by_artifact[artifact] = {
+                  "path": entry["path"],
+                  "artifact": artifact,
+              }
+          build_matrix_json = json.dumps(list(builds_by_artifact.values()), separators=(",", ":"))
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"gateways={matrix_json}\n")
+              fh.write(f"gateway_builds={build_matrix_json}\n")
 
           print("Selected gateway entries:")
           for entry in chosen:
               print(f" - {entry['name']}")
           PY
 
-  benchmark-constant:
+  build-subgraphs:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        subgraphs:
+          - path: apollo-federation/subgraphs-rust
+            artifact: prebuilt-apollo-federation-subgraphs-rust
+          - path: composite-schema/subgraphs-net
+            artifact: prebuilt-composite-schema-subgraphs-net
+          - path: composite-schema/subgraphs-rust
+            artifact: prebuilt-composite-schema-subgraphs-rust
+    name: build-${{ matrix.subgraphs.path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build subgraphs
+        run: |
+          chmod +x "${{ matrix.subgraphs.path }}/build.sh"
+          (cd "${{ matrix.subgraphs.path }}" && bash build.sh)
+
+      - name: Upload prebuilt subgraphs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.subgraphs.artifact }}
+          path: ${{ matrix.subgraphs.path }}
+
+  build-gateways:
     needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateway_builds) }}
+    name: build-${{ matrix.gateway.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build gateway
+        run: |
+          chmod +x "${{ matrix.gateway.path }}/install.sh"
+          (cd "${{ matrix.gateway.path }}" && bash install.sh)
+          touch "${{ matrix.gateway.path }}/.prebuilt-gateway-ready"
+
+      - name: Upload prebuilt gateway
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.gateway.artifact }}
+          path: ${{ matrix.gateway.path }}
+
+  benchmark-constant:
+    needs:
+      - prepare-matrix
+      - build-subgraphs
+      - build-gateways
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +217,44 @@ jobs:
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download prebuilt gateway
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.gateway.gateway_artifact }}
+          path: prebuilt-gateway/
+
+      - name: Restore prebuilt gateway
+        run: |
+          cp -a prebuilt-gateway/. .
+          if [[ -f apollo-federation/gateways/apollo-router/router ]]; then
+            chmod +x apollo-federation/gateways/apollo-router/router
+          fi
+          if [[ -f apollo-federation/gateways/cosmo/cosmo ]]; then
+            chmod +x apollo-federation/gateways/cosmo/cosmo
+          fi
+          if [[ -f apollo-federation/gateways/grafbase/grafbase-gateway ]]; then
+            chmod +x apollo-federation/gateways/grafbase/grafbase-gateway
+          fi
+          if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
+            chmod +x apollo-federation/gateways/hive-router/hive_router
+          fi
+
+      - name: Download prebuilt subgraphs
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.gateway.subgraphs_artifact }}
+          path: prebuilt-subgraphs/
+
+      - name: Restore prebuilt subgraphs
+        run: |
+          cp -a prebuilt-subgraphs/. .
+          if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
+            chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
+          fi
+          if [[ -f composite-schema/subgraphs-rust/target/release/subgraphs ]]; then
+            chmod +x composite-schema/subgraphs-rust/target/release/subgraphs
+          fi
 
       - name: Kill stale perfrunner processes
         run: |
@@ -136,6 +276,8 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          USE_PREBUILT_SUBGRAPHS: "1"
+          USE_PREBUILT_GATEWAY: "1"
 
       - name: Kill all perfrunner processes
         if: always()
@@ -160,6 +302,8 @@ jobs:
   benchmark-ramping:
     needs:
       - prepare-matrix
+      - build-subgraphs
+      - build-gateways
       - benchmark-constant
     if: ${{ always() && !cancelled() }}
     strategy:
@@ -174,6 +318,44 @@ jobs:
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download prebuilt gateway
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.gateway.gateway_artifact }}
+          path: prebuilt-gateway/
+
+      - name: Restore prebuilt gateway
+        run: |
+          cp -a prebuilt-gateway/. .
+          if [[ -f apollo-federation/gateways/apollo-router/router ]]; then
+            chmod +x apollo-federation/gateways/apollo-router/router
+          fi
+          if [[ -f apollo-federation/gateways/cosmo/cosmo ]]; then
+            chmod +x apollo-federation/gateways/cosmo/cosmo
+          fi
+          if [[ -f apollo-federation/gateways/grafbase/grafbase-gateway ]]; then
+            chmod +x apollo-federation/gateways/grafbase/grafbase-gateway
+          fi
+          if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
+            chmod +x apollo-federation/gateways/hive-router/hive_router
+          fi
+
+      - name: Download prebuilt subgraphs
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.gateway.subgraphs_artifact }}
+          path: prebuilt-subgraphs/
+
+      - name: Restore prebuilt subgraphs
+        run: |
+          cp -a prebuilt-subgraphs/. .
+          if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
+            chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
+          fi
+          if [[ -f composite-schema/subgraphs-rust/target/release/subgraphs ]]; then
+            chmod +x composite-schema/subgraphs-rust/target/release/subgraphs
+          fi
 
       - name: Kill stale perfrunner processes
         run: |
@@ -195,6 +377,8 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ramping
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          USE_PREBUILT_SUBGRAPHS: "1"
+          USE_PREBUILT_GATEWAY: "1"
 
       - name: Kill all perfrunner processes
         if: always()

@@ -91,7 +91,7 @@ for dir in "$GATEWAY_DIR" "$SUBGRAPHS_DIR"; do
 done
 
 for script in "$GATEWAY_DIR/start.sh" "$GATEWAY_DIR/install.sh" \
-              "$SUBGRAPHS_DIR/start.sh" "$SUBGRAPHS_DIR/install.sh"; do
+              "$SUBGRAPHS_DIR/start.sh" "$SUBGRAPHS_DIR/build.sh"; do
   if [[ ! -f "$script" ]]; then
     echo "Error: required script not found: $script"
     exit 1
@@ -473,12 +473,45 @@ resolve_listener_pid_by_port() {
 # ---- Install dependencies ---------------------------------------------------
 
 echo ""
-echo "=== Installing subgraph dependencies ==="
-(cd "$SUBGRAPHS_DIR" && run_as_perfrunner bash install.sh)
+echo "=== Preparing subgraphs ==="
+if [[ "${USE_PREBUILT_SUBGRAPHS:-0}" == "1" ]]; then
+  if [[ "$SUBGRAPHS_DIR" == *"subgraphs-rust"* ]] && [[ ! -x "$SUBGRAPHS_DIR/target/release/subgraphs" ]]; then
+    echo "Error: expected prebuilt Rust subgraph binary at $SUBGRAPHS_DIR/target/release/subgraphs"
+    exit 1
+  fi
+
+  if [[ "$SUBGRAPHS_DIR" == *"subgraphs-net"* ]] && ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
+    echo "Error: expected dotnet runtime in prebuilt mode, but it is not available to perfrunner"
+    exit 1
+  fi
+
+  echo "Using prebuilt subgraphs artifact, skipping subgraph build.sh"
+else
+  (cd "$SUBGRAPHS_DIR" && run_as_perfrunner bash build.sh)
+fi
 
 echo ""
-echo "=== Installing gateway dependencies ==="
-(cd "$GATEWAY_DIR" && run_as_perfrunner bash install.sh)
+echo "=== Preparing gateway dependencies ==="
+if [[ "${USE_PREBUILT_GATEWAY:-0}" == "1" ]]; then
+  if [[ ! -f "$GATEWAY_DIR/.prebuilt-gateway-ready" ]]; then
+    echo "Error: expected prebuilt gateway marker at $GATEWAY_DIR/.prebuilt-gateway-ready"
+    exit 1
+  fi
+
+  if [[ -f "$GATEWAY_DIR/package.json" ]] && ! run_as_perfrunner bash -lc 'command -v node >/dev/null && command -v npm >/dev/null && command -v npx >/dev/null'; then
+    echo "Error: expected node/npm/npx runtime in prebuilt gateway mode, but it is not available to perfrunner"
+    exit 1
+  fi
+
+  if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/hotchocolate" ]] && ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
+    echo "Error: expected dotnet runtime in prebuilt gateway mode, but it is not available to perfrunner"
+    exit 1
+  fi
+
+  echo "Using prebuilt gateway artifact, skipping gateway install.sh"
+else
+  (cd "$GATEWAY_DIR" && run_as_perfrunner bash install.sh)
+fi
 
 # ---- Start subgraphs --------------------------------------------------------
 
