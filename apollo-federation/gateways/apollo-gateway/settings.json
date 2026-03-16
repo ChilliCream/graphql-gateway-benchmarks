@@ -1,3 +1,4 @@
 {
-  "graphql": "http://localhost:5220/graphql"
+  "graphql": "http://localhost:5220/graphql",
+  "health": "http://localhost:5220/graphql"
 }

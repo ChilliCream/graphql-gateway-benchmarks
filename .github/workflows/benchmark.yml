@@ -57,6 +57,7 @@ jobs:
             name: hive-router
           - path: composite-schema/gateways/hotchocolate
             name: hotchocolate
+            subgraphs: subgraphs-net
             display_name: "hotchocolate (.net subgraphs)"
           - path: composite-schema/gateways/hotchocolate
             name: hotchocolate-rust

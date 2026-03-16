@@ -68,10 +68,13 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATEWAY_DIR="$REPO_ROOT/$GATEWAY_REL"
-# Subgraphs dir: same top-level category, under "subgraphs" (or override)
+# Subgraphs dir: same top-level category, under the default runtime variant
+# (or override). Composite schema defaults to .NET subgraphs in subgraphs-net.
 CATEGORY="$(echo "$GATEWAY_REL" | cut -d/ -f1)"
 if [[ -n "$SUBGRAPHS_OVERRIDE" ]]; then
   SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/$SUBGRAPHS_OVERRIDE"
+elif [[ "$CATEGORY" == "composite-schema" ]]; then
+  SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/subgraphs-net"
 else
   SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/subgraphs"
 fi
@@ -268,22 +271,31 @@ fi
 # 'perfrunner' user. This ensures third-party gateway binaries cannot access
 # root or system resources. Cleanup: 'sudo pkill -u perfrunner'.
 
-PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:${PATH}"
-PERFRUNNER_NODE_BIN=""
+PERFRUNNER_PATH=""
 
-# Prefer the newest nvm-managed Node bin if available, but don't fail if nvm
-# is missing or no Node version has been installed for perfrunner yet.
-for node_dir in /home/perfrunner/.nvm/versions/node/*; do
-  [[ -d "$node_dir" ]] || continue
-  PERFRUNNER_NODE_BIN="$node_dir/bin"
-done
+refresh_perfrunner_path() {
+  local node_dir
+  local node_bin=""
 
-if [[ -n "$PERFRUNNER_NODE_BIN" ]]; then
-  PERFRUNNER_PATH="$PERFRUNNER_NODE_BIN:$PERFRUNNER_PATH"
-fi
+  PERFRUNNER_PATH="/home/perfrunner/.cargo/bin:/home/perfrunner/.dotnet:${PATH}"
+
+  # Prefer the newest nvm-managed Node bin if available, but don't fail if nvm
+  # is missing or no Node version has been installed for perfrunner yet.
+  for node_dir in /home/perfrunner/.nvm/versions/node/*; do
+    [[ -d "$node_dir" ]] || continue
+    node_bin="$node_dir/bin"
+  done
+
+  if [[ -n "$node_bin" ]]; then
+    PERFRUNNER_PATH="$node_bin:$PERFRUNNER_PATH"
+  fi
+}
+
+refresh_perfrunner_path
 
 run_as_perfrunner() {
   if id perfrunner &>/dev/null; then
+    refresh_perfrunner_path
     sudo -u perfrunner -- \
       env HOME="/home/perfrunner" \
           PATH="$PERFRUNNER_PATH" \
@@ -304,21 +316,51 @@ run_pinned_as_perfrunner() {
   fi
 }
 
-assert_process_user() {
-  local pid="$1"
+list_descendant_pids() {
+  local root_pid="$1"
+  local queue=("$root_pid")
+  local child
+  local current
+
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    current="${queue[0]}"
+    queue=("${queue[@]:1}")
+    while IFS= read -r child; do
+      [[ -z "$child" ]] && continue
+      echo "$child"
+      queue+=("$child")
+    done < <(pgrep -P "$current" 2>/dev/null || true)
+  done
+}
+
+assert_launcher_tree_has_user() {
+  local launcher_pid="$1"
   local expected_user="$2"
   local label="$3"
+  local timeout_seconds="${4:-10}"
+  local deadline=$((SECONDS + timeout_seconds))
+  local pid
   local actual_user
 
-  actual_user="$(ps -o user= -p "$pid" 2>/dev/null | xargs || true)"
-  if [[ -z "$actual_user" ]]; then
-    echo "Error: could not determine process user for $label (pid=$pid)"
-    exit 1
-  fi
-  if [[ "$actual_user" != "$expected_user" ]]; then
-    echo "Error: $label must run as '$expected_user', but runs as '$actual_user' (pid=$pid)"
-    exit 1
-  fi
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "$launcher_pid" 2>/dev/null; then
+      echo "Error: $label launcher exited before isolation could be verified (pid=$launcher_pid)"
+      exit 1
+    fi
+
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      actual_user="$(ps -o user= -p "$pid" 2>/dev/null | xargs || true)"
+      if [[ "$actual_user" == "$expected_user" ]]; then
+        return 0
+      fi
+    done < <(list_descendant_pids "$launcher_pid")
+
+    sleep 0.2
+  done
+
+  echo "Error: $label did not spawn a '$expected_user' process within ${timeout_seconds}s (launcher pid=$launcher_pid)"
+  exit 1
 }
 
 # Print gateway/subgraph logs when startup fails to make CI failures diagnosable.
@@ -380,8 +422,8 @@ GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
 
 if id perfrunner &>/dev/null; then
-  assert_process_user "$SUBGRAPH_PID" "perfrunner" "subgraphs launcher"
-  assert_process_user "$GATEWAY_PID" "perfrunner" "gateway launcher"
+  assert_launcher_tree_has_user "$SUBGRAPH_PID" "perfrunner" "subgraphs"
+  assert_launcher_tree_has_user "$GATEWAY_PID" "perfrunner" "gateway"
   echo "Privilege isolation: gateway/subgraphs running as perfrunner"
 fi
 

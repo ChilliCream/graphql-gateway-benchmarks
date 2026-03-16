@@ -1,0 +1,39 @@
+schema {
+  query: Query
+}
+
+type Product {
+  upc: String!
+  name: String!
+  price: Long!
+  weight: Long!
+}
+
+type Query {
+  topProducts(first: Int! = 5): [Product!]!
+  product(upc: ID!): Product @lookup
+}
+
+enum ScalarSerializationType {
+  STRING
+  BOOLEAN
+  INT
+  FLOAT
+  OBJECT
+  LIST
+}
+
+"""
+The @lookup directive is used within a source schema to specify output fields
+that can be used by the distributed GraphQL executor to resolve an entity by
+a stable key.
+"""
+directive @lookup on FIELD_DEFINITION
+
+directive @serializeAs("The primitive type a scalar is serialized to." type: [ScalarSerializationType!]! "The ECMA-262 regex pattern that the serialized scalar value conforms to." pattern: String) on SCALAR
+
+"The `@specifiedBy` directive is used within the type system definition language to provide a URL for specifying the behavior of custom scalar definitions."
+directive @specifiedBy("The specifiedBy URL points to a human-readable specification. This field will only read a result for scalar types." url: String!) on SCALAR
+
+"The `Long` scalar type represents a signed 64-bit integer."
+scalar Long @serializeAs(type: INT) @specifiedBy(url: "https://scalars.graphql.org/chillicream/long.html")
