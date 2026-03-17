@@ -6,7 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder
     .AddGraphQL("accounts-api", disableDefaultSecurity: true)
-    .AddAccountTypes();
+    .AddAccountTypes()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 

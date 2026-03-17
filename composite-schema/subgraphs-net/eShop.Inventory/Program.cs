@@ -6,7 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder
     .AddGraphQL("inventory-api", disableDefaultSecurity: true)
-    .AddInventoryTypes();
+    .AddInventoryTypes()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 

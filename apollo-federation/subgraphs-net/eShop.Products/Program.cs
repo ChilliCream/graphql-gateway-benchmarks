@@ -7,7 +7,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services
     .AddGraphQLServer()
     .AddApolloFederation(FederationVersion.Federation27)
-    .AddQueryType<eShop.Products.Query>();
+    .AddQueryType<eShop.Products.Query>()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 

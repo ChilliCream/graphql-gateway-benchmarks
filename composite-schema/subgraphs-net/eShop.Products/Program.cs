@@ -6,7 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder
     .AddGraphQL("products-api", disableDefaultSecurity: true)
-    .AddProductTypes();
+    .AddProductTypes()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 

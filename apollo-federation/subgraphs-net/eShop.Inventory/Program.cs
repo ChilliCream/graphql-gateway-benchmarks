@@ -8,7 +8,8 @@ builder.Services
     .AddGraphQLServer()
     .AddApolloFederation(FederationVersion.Federation27)
     .AddQueryType<eShop.Inventory.Query>()
-    .AddType<eShop.Inventory.Product>();
+    .AddType<eShop.Inventory.Product>()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 

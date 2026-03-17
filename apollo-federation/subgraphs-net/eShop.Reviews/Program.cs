@@ -10,7 +10,8 @@ builder.Services
     .AddQueryType<eShop.Reviews.Query>()
     .AddType<eShop.Reviews.Review>()
     .AddType<eShop.Reviews.User>()
-    .AddType<eShop.Reviews.Product>();
+    .AddType<eShop.Reviews.Product>()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 

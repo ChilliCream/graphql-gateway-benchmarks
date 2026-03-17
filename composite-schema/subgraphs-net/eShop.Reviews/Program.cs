@@ -4,9 +4,10 @@ ThreadPool.SetMinThreads(256, 256);
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services
-    .AddGraphQLServer("reviews-api", disableDefaultSecurity: true)
-    .AddReviewTypes();
+builder
+    .AddGraphQL("reviews-api", disableDefaultSecurity: true)
+    .AddReviewTypes()
+    .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
 var app = builder.Build();
 
