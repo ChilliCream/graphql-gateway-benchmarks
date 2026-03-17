@@ -15,14 +15,14 @@ This scenario is a burst stress test with peaks up to **500 VUs** over **120s**.
 
 | Gateway | Version | Median RPS | Best RPS | Worst RPS | CV% | Notes |
 | :------ | :------ | ---------: | -------: | --------: | --: | :---- |
-| hotchocolate | 16.0.0-p.11.47 | 6,505 | 6,505 | 1,560 | 53.8% | non-compatible response (732235 across 1/2 runs) |
+| hotchocolate | 16.0.0-p.11.47 | 1,625 | 1,625 | 1,463 | 7.0% |  |
 
 
 ### .NET Subgraphs
 
 | Gateway | Version | Median RPS | Best RPS | Worst RPS | CV% | Notes |
 | :------ | :------ | ---------: | -------: | --------: | --: | :---- |
-| hotchocolate | 16.0.0-p.11.47 | 5,824 | 5,824 | 1,568 | 51.7% | non-compatible response (632711 across 1/2 runs) |
+| hotchocolate | 16.0.0-p.11.47 | 1,537 | 1,537 | 1,502 | 1.6% |  |
 
 
 ### Details
@@ -34,30 +34,28 @@ This scenario is a burst stress test with peaks up to **500 VUs** over **120s**.
 
 
 ```
-✗ response code was 200
-      ↳  8% — ✓ 67281 / ✗ 732685
+✓ response code was 200
      ✓ no graphql errors
-     ✗ valid response structure
-      ↳  99% — ✓ 799516 / ✗ 450
+     ✓ valid response structure
 
-     checks.........................: 69.45% ✓ 1666763     ✗ 733135
-     data_received..................: 6.0 GB 49 MB/s
-     data_sent......................: 82 MB  667 kB/s
-     http_req_blocked...............: avg=366ns   min=0s       med=0s      max=4.58ms   p(90)=0s      p(95)=2.36µs  p(99.9)=8.09µs  
-     http_req_connecting............: avg=124ns   min=0s       med=0s      max=4.54ms   p(90)=0s      p(95)=0s      p(99.9)=0s      
-     http_req_duration..............: avg=2.27ms  min=0s       med=0s      max=416.33ms p(90)=0s      p(95)=12.23ms p(99.9)=129.75ms
-       { expected_response:true }...: avg=26.41ms min=2.73ms   med=14.85ms max=401.23ms p(90)=64.15ms p(95)=85.15ms p(99.9)=206.2ms 
-     http_req_failed................: 91.47% ✓ 732685      ✗ 68281 
-     http_req_receiving.............: avg=45.02µs min=0s       med=0s      max=374.11ms p(90)=0s      p(95)=97.63µs p(99.9)=3.09ms  
-     http_req_sending...............: avg=2.76µs  min=0s       med=0s      max=75.91ms  p(90)=0s      p(95)=10.09µs p(99.9)=317.16µs
-     http_req_tls_handshaking.......: avg=0s      min=0s       med=0s      max=0s       p(90)=0s      p(95)=0s      p(99.9)=0s      
-     http_req_waiting...............: avg=2.22ms  min=0s       med=0s      max=410.55ms p(90)=0s      p(95)=11.83ms p(99.9)=128.07ms
-     http_reqs......................: 800966 6505.014656/s
-     iteration_duration.............: avg=29.99ms min=119.47µs med=25.11ms max=428.94ms p(90)=59.09ms p(95)=77.46ms p(99.9)=163.64ms
-     iterations.....................: 799966 6496.893194/s
-     success_rate...................: 8.41%  ✓ 67281       ✗ 732235
-     vus............................: 54     min=0         max=496 
-     vus_max........................: 500    min=500       max=500
+     checks.........................: 100.00% ✓ 305133      ✗ 0     
+     data_received..................: 9.0 GB  143 MB/s
+     data_sent......................: 123 MB  2.0 MB/s
+     http_req_blocked...............: avg=13.56µs  min=1.03µs  med=2.52µs   max=73.14ms p(90)=3.9µs    p(95)=4.88µs   p(99.9)=1.22ms  
+     http_req_connecting............: avg=10.41µs  min=0s      med=0s       max=72.98ms p(90)=0s       p(95)=0s       p(99.9)=1.18ms  
+     http_req_duration..............: avg=138.95ms min=2.69ms  med=62.49ms  max=18.13s  p(90)=358.75ms p(95)=508.92ms p(99.9)=1.56s   
+       { expected_response:true }...: avg=138.95ms min=2.69ms  med=62.49ms  max=18.13s  p(90)=358.75ms p(95)=508.92ms p(99.9)=1.56s   
+     http_req_failed................: 0.00%   ✓ 0           ✗ 102711
+     http_req_receiving.............: avg=5.07ms   min=50.29µs med=109.64µs max=1.09s   p(90)=2.82ms   p(95)=10.25ms  p(99.9)=430.82ms
+     http_req_sending...............: avg=54.73µs  min=5.38µs  med=10.14µs  max=62.12ms p(90)=17.07µs  p(95)=26.12µs  p(99.9)=7.7ms   
+     http_req_tls_handshaking.......: avg=0s       min=0s      med=0s       max=0s      p(90)=0s       p(95)=0s       p(99.9)=0s      
+     http_req_waiting...............: avg=133.82ms min=2.6ms   med=60.94ms  max=18.13s  p(90)=344.98ms p(95)=485.71ms p(99.9)=1.51s   
+     http_reqs......................: 102711  1625.711829/s
+     iteration_duration.............: avg=140.57ms min=3.49ms  med=64.04ms  max=18.17s  p(90)=361.29ms p(95)=511.47ms p(99.9)=1.57s   
+     iterations.....................: 101711  1609.883809/s
+     success_rate...................: 100.00% ✓ 101711      ✗ 0     
+     vus............................: 67      min=0         max=496 
+     vus_max........................: 500     min=500       max=500
 ```
 
 
@@ -83,30 +81,28 @@ This scenario is a burst stress test with peaks up to **500 VUs** over **120s**.
 
 
 ```
-✗ response code was 200
-      ↳  11% — ✓ 79465 / ✗ 633084
+✓ response code was 200
      ✓ no graphql errors
-     ✗ valid response structure
-      ↳  99% — ✓ 712176 / ✗ 373
+     ✓ valid response structure
 
-     checks.........................: 70.36% ✓ 1504190     ✗ 633457
-     data_received..................: 7.1 GB 58 MB/s
-     data_sent......................: 97 MB  790 kB/s
-     http_req_blocked...............: avg=485ns   min=0s      med=0s      max=19.46ms  p(90)=1.78µs  p(95)=2.65µs   p(99.9)=10.14µs 
-     http_req_connecting............: avg=150ns   min=0s      med=0s      max=19.36ms  p(90)=0s      p(95)=0s       p(99.9)=0s      
-     http_req_duration..............: avg=3.71ms  min=0s      med=0s      max=862.39ms p(90)=8.09ms  p(95)=22.88ms  p(99.9)=184.81ms
-       { expected_response:true }...: avg=32.19ms min=1.95ms  med=19.83ms max=600.96ms p(90)=72.35ms p(95)=97.86ms  p(99.9)=305.42ms
-     http_req_failed................: 88.72% ✓ 633085      ✗ 80465 
-     http_req_receiving.............: avg=75.81µs min=0s      med=0s      max=473.83ms p(90)=78.62µs p(95)=122.62µs p(99.9)=6.64ms  
-     http_req_sending...............: avg=4.01µs  min=0s      med=0s      max=323.11ms p(90)=8.35µs  p(95)=11.48µs  p(99.9)=505.78µs
-     http_req_tls_handshaking.......: avg=0s      min=0s      med=0s      max=0s       p(90)=0s      p(95)=0s       p(99.9)=0s      
-     http_req_waiting...............: avg=3.63ms  min=0s      med=0s      max=862.38ms p(90)=7.82ms  p(95)=22.34ms  p(99.9)=179.6ms 
-     http_reqs......................: 713550 5824.026082/s
-     iteration_duration.............: avg=33.67ms min=124.7µs med=28.6ms  max=862.47ms p(90)=63.36ms p(95)=81.17ms  p(99.9)=194.33ms
-     iterations.....................: 712549 5815.855876/s
-     success_rate...................: 11.15% ✓ 79465       ✗ 632711
-     vus............................: 58     min=0         max=497 
-     vus_max........................: 500    min=500       max=500
+     checks.........................: 100.00% ✓ 285360      ✗ 0    
+     data_received..................: 8.4 GB  135 MB/s
+     data_sent......................: 116 MB  1.8 MB/s
+     http_req_blocked...............: avg=11.09µs  min=952ns   med=2.54µs  max=57.86ms  p(90)=4.04µs   p(95)=5µs      p(99.9)=939.47µs
+     http_req_connecting............: avg=7.95µs   min=0s      med=0s      max=57.78ms  p(90)=0s       p(95)=0s       p(99.9)=889.51µs
+     http_req_duration..............: avg=148.42ms min=1.91ms  med=86.34ms max=2.16s    p(90)=360.4ms  p(95)=487.57ms p(99.9)=1.47s   
+       { expected_response:true }...: avg=148.42ms min=1.91ms  med=86.34ms max=2.16s    p(90)=360.4ms  p(95)=487.57ms p(99.9)=1.47s   
+     http_req_failed................: 0.00%   ✓ 0           ✗ 96120
+     http_req_receiving.............: avg=4.04ms   min=53.09µs med=112.9µs max=870.04ms p(90)=2.92ms   p(95)=9.23ms   p(99.9)=317.63ms
+     http_req_sending...............: avg=49.5µs   min=5.3µs   med=10.36µs max=94.31ms  p(90)=17.63µs  p(95)=23.72µs  p(99.9)=6.89ms  
+     http_req_tls_handshaking.......: avg=0s       min=0s      med=0s      max=0s       p(90)=0s       p(95)=0s       p(99.9)=0s      
+     http_req_waiting...............: avg=144.33ms min=1.82ms  med=84.66ms max=2.15s    p(90)=348.91ms p(95)=466.82ms p(99.9)=1.47s   
+     http_reqs......................: 96120   1537.809797/s
+     iteration_duration.............: avg=150.28ms min=2.54ms  med=88.37ms max=2.16s    p(90)=363.33ms p(95)=490.03ms p(99.9)=1.47s   
+     iterations.....................: 95120   1521.810943/s
+     success_rate...................: 100.00% ✓ 95120       ✗ 0    
+     vus............................: 85      min=0         max=493
+     vus_max........................: 500     min=500       max=500
 ```
 
 
