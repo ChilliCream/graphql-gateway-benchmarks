@@ -191,16 +191,24 @@ resolve_listener_pids_by_port() {
 
 release_benchmark_ports() {
   local port
+  local ports=("$@")
   local pids
   local pid
   local released_any=false
+  local ports_label=""
 
-  for port in "${BENCHMARK_PORTS[@]}"; do
+  if [[ ${#ports[@]} -eq 0 ]]; then
+    ports=("${BENCHMARK_PORTS[@]}")
+  fi
+
+  ports_label="$(printf "%s " "${ports[@]}" | xargs)"
+
+  for port in "${ports[@]}"; do
     pids="$(resolve_listener_pids_by_port "$port" || true)"
     [[ -n "$pids" ]] || continue
 
     if [[ "$released_any" == false ]]; then
-      echo "Releasing benchmark ports: ${BENCHMARK_PORTS[*]}"
+      echo "Releasing benchmark ports: $ports_label"
       released_any=true
     fi
 
@@ -213,7 +221,7 @@ release_benchmark_ports() {
 
   if [[ "$released_any" == true ]]; then
     sleep 0.5
-    for port in "${BENCHMARK_PORTS[@]}"; do
+    for port in "${ports[@]}"; do
       pids="$(resolve_listener_pids_by_port "$port" || true)"
       [[ -n "$pids" ]] || continue
       while IFS= read -r pid; do
@@ -222,6 +230,66 @@ release_benchmark_ports() {
       done <<< "$pids"
     done
   fi
+}
+
+port_is_bindable() {
+  local port="$1"
+  python3 - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    s.bind(("0.0.0.0", port))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+wait_for_ports_bindable() {
+  local ports=("$@")
+  local timeout_seconds="${BENCH_PORT_BIND_TIMEOUT_SECONDS:-90}"
+  local deadline=$((SECONDS + timeout_seconds))
+  local port
+  local all_bindable
+
+  if [[ ${#ports[@]} -eq 0 ]]; then
+    ports=("${BENCHMARK_PORTS[@]}")
+  fi
+
+  while true; do
+    all_bindable=true
+    for port in "${ports[@]}"; do
+      if ! port_is_bindable "$port"; then
+        all_bindable=false
+        break
+      fi
+    done
+
+    if [[ "$all_bindable" == true ]]; then
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "Error: benchmark ports did not become bindable within ${timeout_seconds}s: $(printf "%s " "${ports[@]}" | xargs)"
+      for port in "${ports[@]}"; do
+        if command -v ss &>/dev/null; then
+          local ss_lines
+          ss_lines="$(run_with_optional_sudo ss -tan "sport = :$port" | tail -n +2 | awk 'NF' || true)"
+          if [[ -n "$ss_lines" ]]; then
+            echo "  Port $port socket states:"
+            echo "$ss_lines"
+          fi
+        fi
+      done
+      return 1
+    fi
+
+    sleep 0.5
+  done
 }
 
 cleanup() {
@@ -615,6 +683,7 @@ fi
 echo ""
 echo "=== Starting subgraphs ==="
 release_benchmark_ports
+wait_for_ports_bindable "${BENCHMARK_PORTS[@]}"
 (cd "$SUBGRAPHS_DIR" && run_pinned_as_perfrunner "$SUBGRAPH_CPUSET" bash start.sh) &
 SUBGRAPH_PID=$!
 echo "Subgraphs PID: $SUBGRAPH_PID"
@@ -626,6 +695,11 @@ sleep 3
 
 echo ""
 echo "=== Starting gateway ==="
+PRESTART_GATEWAY_PORT="$(extract_port_from_url "$GRAPHQL_URL")"
+if [[ -n "$PRESTART_GATEWAY_PORT" ]]; then
+  release_benchmark_ports "$PRESTART_GATEWAY_PORT"
+  wait_for_ports_bindable "$PRESTART_GATEWAY_PORT"
+fi
 (cd "$GATEWAY_DIR" && run_pinned_as_perfrunner "$GATEWAY_CPUSET" bash start.sh) &
 GATEWAY_PID=$!
 echo "Gateway PID: $GATEWAY_PID"
