@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate RESULTS_CONSTANT.md and RESULTS_RAMPING.md from benchmark artifacts."""
+"""Generate RESULTS_CONSTANT.md and RESULTS_BURST.md from benchmark artifacts."""
 
 import json
 import os
@@ -239,12 +239,12 @@ def generate_markdown(mode, results):
             f"This scenario executes a constant load of **{vus} VUs** over **{duration}**."
         )
     else:
-        lines.append("## Overview for: `ramping-vus`")
+        lines.append("## Overview for: `burst-vus`")
         lines.append("")
         lines.append(SCENARIO_DESCRIPTION)
         lines.append("")
         lines.append(
-            f"This scenario is a stress test that ramps up to **{vus} VUs** over **{duration}**."
+            f"This scenario is a burst stress test with peaks up to **{vus} VUs** over **{duration}**."
         )
 
     lines.append("")
@@ -352,7 +352,7 @@ def main():
     print(f"Found {len(results)} result(s)")
     os.makedirs(output_dir, exist_ok=True)
 
-    for mode, filename in [("constant", "RESULTS_CONSTANT.md"), ("ramping", "RESULTS_RAMPING.md")]:
+    for mode, filename in [("constant", "RESULTS_CONSTANT.md"), ("ramping", "RESULTS_BURST.md")]:
         md = generate_markdown(mode, results)
         if md:
             output_path = os.path.join(output_dir, filename)

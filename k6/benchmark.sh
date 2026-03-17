@@ -5,13 +5,13 @@ set -Eeuo pipefail
 # benchmark.sh — Full benchmark orchestrator
 #
 # Usage:
-#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|ramping]
+#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|burst|ramping]
 #
 # Examples:
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
-#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust ramping
-#   ./k6/benchmark.sh apollo-federation/gateways/cosmo ramping
+#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust burst
+#   ./k6/benchmark.sh apollo-federation/gateways/cosmo burst
 #
 # Environment variables:
 #   MEASURE_SECONDS  Benchmark measurement duration (default: 120)
@@ -26,7 +26,7 @@ set -Eeuo pipefail
 # ---- Args -------------------------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <gateway-path> [subgraphs-dir] [constant|ramping]"
+  echo "Usage: $0 <gateway-path> [subgraphs-dir] [constant|burst|ramping]"
   echo "  e.g. $0 composite-schema/gateways/hotchocolate"
   echo "  e.g. $0 composite-schema/gateways/hotchocolate subgraphs-rust"
   exit 1
@@ -35,14 +35,24 @@ fi
 GATEWAY_REL="$1"
 SUBGRAPHS_OVERRIDE=""
 LOAD_MODE="constant"
+LOAD_MODE_LABEL="constant"
 
 # Parse remaining args: auto-detect mode vs subgraphs override
 for arg in "${@:2}"; do
-  if [[ "$arg" == "constant" || "$arg" == "ramping" ]]; then
-    LOAD_MODE="$arg"
-  else
-    SUBGRAPHS_OVERRIDE="$arg"
-  fi
+  case "$arg" in
+    constant)
+      LOAD_MODE="constant"
+      LOAD_MODE_LABEL="constant"
+      ;;
+    burst|ramping)
+      # Keep "ramping" internal for existing profiles.json + k6 mode compatibility.
+      LOAD_MODE="ramping"
+      LOAD_MODE_LABEL="burst"
+      ;;
+    *)
+      SUBGRAPHS_OVERRIDE="$arg"
+      ;;
+  esac
 done
 
 MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
@@ -219,7 +229,7 @@ print(p.get('system', ''), p.get('k6', ''), p.get('gateway', ''), p.get('subgrap
   # Check if taskset is available (Linux only)
   if command -v taskset &>/dev/null; then
     USE_PINNING=true
-    echo "CPU pinning enabled (profile=$PROFILE_KEY, mode=$LOAD_MODE)"
+    echo "CPU pinning enabled (profile=$PROFILE_KEY, mode=$LOAD_MODE_LABEL)"
     echo "  system:    cores $SYSTEM_CPUSET"
     echo "  k6:        cores $K6_CPUSET"
     echo "  gateway:   cores $GATEWAY_CPUSET"
@@ -784,7 +794,7 @@ json.dump({
   # ---- Run benchmark ---------------------------------------------------------
 
   echo ""
-  echo "=== Benchmark run $RUN (mode=$LOAD_MODE, duration=${MEASURE_SECONDS}s) ==="
+  echo "=== Benchmark run $RUN (mode=$LOAD_MODE_LABEL, duration=${MEASURE_SECONDS}s) ==="
   echo ""
 
   K6_ENV_ARGS=(
@@ -843,7 +853,7 @@ done
 echo ""
 echo "======================================================================="
 echo "All $BENCH_RUNS measured runs complete (plus 1 warmup, discarded)."
-echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE | Duration: ${MEASURE_SECONDS}s"
+echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE_LABEL | Duration: ${MEASURE_SECONDS}s"
 echo "Results: $RESULTS_BASE/"
 echo "======================================================================="
 

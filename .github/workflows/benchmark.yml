@@ -3,8 +3,8 @@ run-name: Benchmark Run ${{ github.run_number }}
 
 on:
   schedule:
-    # Daily at 04:00 UTC
-    - cron: '0 4 * * *'
+    # Daily at 21:00 UTC
+    - cron: '0 21 * * *'
   workflow_dispatch:
     inputs:
       gateway:
@@ -376,7 +376,7 @@ jobs:
           name: results-${{ matrix.gateway.name }}-constant
           path: ${{ matrix.gateway.path }}/results/
 
-  benchmark-ramping:
+  benchmark-burst:
     needs:
       - prepare-matrix
       - build-subgraphs
@@ -389,7 +389,7 @@ jobs:
         gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways) }}
     runs-on:
       group: benchmarking-1
-    name: ${{ matrix.gateway.name }} (ramping)
+    name: ${{ matrix.gateway.name }} (burst)
     env:
       BENCH_RUNS: ${{ inputs.runs || '10' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
@@ -463,7 +463,7 @@ jobs:
           sudo find . -type d -exec chmod g+s {} +
 
       - name: Run benchmark
-        run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} ramping
+        run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
@@ -487,7 +487,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: results-${{ matrix.gateway.name }}-ramping
+          name: results-${{ matrix.gateway.name }}-burst
           path: ${{ matrix.gateway.path }}/results/
 
   generate-results-constant:
@@ -525,9 +525,9 @@ jobs:
           git diff --cached --quiet || git commit -m "Update constant benchmark results"
           git push
 
-  generate-results-ramping:
+  generate-results-burst:
     needs:
-      - benchmark-ramping
+      - benchmark-burst
       - generate-results-constant
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -538,34 +538,34 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: results-*-ramping
+          pattern: results-*-burst
           path: artifacts/
 
-      - name: Generate ramping result document
+      - name: Generate burst result document
         run: python3 k6/generate-results.py artifacts/ .
 
-      - name: Write ramping summary
+      - name: Write burst summary
         run: |
-          echo "# Benchmark Results (Ramping)" >> $GITHUB_STEP_SUMMARY
+          echo "# Benchmark Results (Burst)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ -f RESULTS_RAMPING.md ]]; then
-            cat RESULTS_RAMPING.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f RESULTS_BURST.md ]]; then
+            cat RESULTS_BURST.md >> $GITHUB_STEP_SUMMARY
           else
-            echo "No ramping results were generated." >> $GITHUB_STEP_SUMMARY
+            echo "No burst results were generated." >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Commit ramping results
+      - name: Commit burst results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RESULTS_RAMPING.md
-          git diff --cached --quiet || git commit -m "Update ramping benchmark results"
+          git add RESULTS_BURST.md
+          git diff --cached --quiet || git commit -m "Update burst benchmark results"
           git push
 
   benchmark-summary:
     needs:
       - generate-results-constant
-      - generate-results-ramping
+      - generate-results-burst
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -592,8 +592,8 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [[ -f RESULTS_RAMPING.md ]]; then
-            cat RESULTS_RAMPING.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f RESULTS_BURST.md ]]; then
+            cat RESULTS_BURST.md >> $GITHUB_STEP_SUMMARY
           else
-            echo "No ramping results were generated." >> $GITHUB_STEP_SUMMARY
+            echo "No burst results were generated." >> $GITHUB_STEP_SUMMARY
           fi

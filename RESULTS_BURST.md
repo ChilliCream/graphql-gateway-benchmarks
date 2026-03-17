@@ -1,4 +1,4 @@
-## Overview for: `ramping-vus`
+## Overview for: `burst-vus`
 
 Each benchmark runs a GraphQL gateway with 4 subgraphs and executes a heavy nested query that exercises federation/composition capabilities.
 
@@ -8,7 +8,7 @@ Subgraph technology is reported in the `Subgraphs` column for each row:
 
 **Methodology:** Each gateway executes 11 runs of 120s each. The first run is a full-duration warmup (discarded). The remaining 10 runs are measured. Results are ranked by **median RPS** across the 10 measured runs, with best/worst/CV% reported for transparency.
 
-This scenario is a stress test that ramps up to **500 VUs** over **120s**.
+This scenario is a burst stress test with peaks up to **500 VUs** over **120s**.
 
 
 ### Comparison

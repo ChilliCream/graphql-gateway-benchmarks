@@ -12,7 +12,16 @@ const vus = Number.isFinite(parsedVus) && parsedVus > 0 ? parsedVus : defaultVus
 const duration = __ENV.BENCH_OVER_TIME || "60s";
 const durationSeconds = parseDurationSeconds(duration);
 const rampFloorVUs = resolveRampFloorVUs(__ENV.BENCH_RAMP_FLOOR_VUS, vus);
-const rampingStages = buildRampingStages(durationSeconds, rampFloorVUs, vus);
+const burstCount = resolveBurstCount(
+  __ENV.BENCH_BURST_COUNT || __ENV.BENCH_SPIKE_COUNT,
+  durationSeconds
+);
+const rampingStages = buildBurstStages(
+  durationSeconds,
+  rampFloorVUs,
+  vus,
+  burstCount
+);
 
 const successRate = new Rate("success_rate");
 
@@ -66,6 +75,14 @@ function resolveRampFloorVUs(value, peakVUs) {
   return Math.max(1, Math.min(candidate, peak));
 }
 
+function resolveBurstCount(value, totalSeconds) {
+  const fallbackBursts = 2;
+  const configured = parsePositiveInt(value);
+  const requested = configured === null ? fallbackBursts : configured;
+  const maxBursts = Math.max(1, Math.floor(Math.max(totalSeconds, 1) / 2));
+  return Math.max(1, Math.min(requested, maxBursts));
+}
+
 function parseDurationSeconds(value) {
   const normalized = String(value || "").trim();
   const match = normalized.match(/^(\d+)([smh]?)$/i);
@@ -86,53 +103,7 @@ function parseDurationSeconds(value) {
   return amount;
 }
 
-function splitThreeStages(totalSeconds) {
-  if (totalSeconds <= 0) {
-    return [1, 1, 1];
-  }
-
-  // Keep the existing 1:4:1 profile while matching total runtime exactly.
-  const stages = [
-    Math.floor(totalSeconds / 6),
-    Math.floor((totalSeconds * 4) / 6),
-    Math.floor(totalSeconds / 6),
-  ];
-
-  for (let i = 0; i < stages.length; i++) {
-    if (stages[i] < 1) {
-      stages[i] = 1;
-    }
-  }
-
-  let sum = stages[0] + stages[1] + stages[2];
-  while (sum > totalSeconds) {
-    if (stages[1] > 1) {
-      stages[1] -= 1;
-      sum -= 1;
-      continue;
-    }
-    if (stages[0] > 1) {
-      stages[0] -= 1;
-      sum -= 1;
-      continue;
-    }
-    if (stages[2] > 1) {
-      stages[2] -= 1;
-      sum -= 1;
-      continue;
-    }
-    break;
-  }
-
-  while (sum < totalSeconds) {
-    stages[1] += 1;
-    sum += 1;
-  }
-
-  return stages;
-}
-
-function buildRampingStages(totalSeconds, floorVUs, targetVUs) {
+function buildBurstStages(totalSeconds, floorVUs, targetVUs, bursts) {
   const validTotal = Number.isFinite(totalSeconds)
     ? Math.max(1, Math.floor(totalSeconds))
     : 60;
@@ -141,19 +112,65 @@ function buildRampingStages(totalSeconds, floorVUs, targetVUs) {
     return [{ duration: "1s", target: targetVUs }];
   }
 
-  if (validTotal === 2) {
-    return [
-      { duration: "1s", target: targetVUs },
-      { duration: "1s", target: floorVUs },
-    ];
+  const stageList = [];
+  const pushStage = (seconds, target) => {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return;
+    }
+
+    const duration = `${Math.floor(seconds)}s`;
+    const last = stageList.length > 0 ? stageList[stageList.length - 1] : null;
+    if (last && last.target === target) {
+      const lastSeconds = parseDurationSeconds(last.duration);
+      last.duration = `${lastSeconds + Math.floor(seconds)}s`;
+      return;
+    }
+
+    stageList.push({ duration, target });
+  };
+  const burstCountSafe = Math.max(1, Math.floor(bursts));
+  const baseSegment = Math.floor(validTotal / burstCountSafe);
+  const remainder = validTotal - baseSegment * burstCountSafe;
+
+  for (let i = 0; i < burstCountSafe; i++) {
+    let segmentSeconds = baseSegment + (i < remainder ? 1 : 0);
+    if (segmentSeconds <= 0) {
+      continue;
+    }
+
+    if (segmentSeconds === 1) {
+      pushStage(1, targetVUs);
+      continue;
+    }
+
+    if (segmentSeconds === 2) {
+      pushStage(1, targetVUs);
+      pushStage(1, floorVUs);
+      continue;
+    }
+
+    // Per burst segment: floor hold + ramp to peak + ramp back to floor.
+    const holdSeconds = Math.floor(segmentSeconds / 3);
+    const upSeconds = Math.floor(segmentSeconds / 3);
+    const downSeconds = segmentSeconds - holdSeconds - upSeconds;
+
+    if (holdSeconds > 0) {
+      pushStage(holdSeconds, floorVUs);
+    }
+    if (upSeconds > 0) {
+      pushStage(upSeconds, targetVUs);
+    }
+    if (downSeconds > 0) {
+      pushStage(downSeconds, floorVUs);
+    }
   }
 
-  const [up, hold, down] = splitThreeStages(validTotal);
-  return [
-    { duration: `${up}s`, target: targetVUs },
-    { duration: `${hold}s`, target: targetVUs },
-    { duration: `${down}s`, target: floorVUs },
-  ];
+  return stageList.length > 0
+    ? stageList
+    : [
+        { duration: "1s", target: targetVUs },
+        { duration: "1s", target: floorVUs },
+      ];
 }
 
 export function setup() {
