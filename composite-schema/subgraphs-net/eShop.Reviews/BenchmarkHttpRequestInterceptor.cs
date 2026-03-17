@@ -4,6 +4,9 @@ using HotChocolate.Execution;
 
 public sealed class BenchmarkHttpRequestInterceptor : IHttpRequestInterceptor
 {
+    private static readonly bool s_simulateLatency =
+        string.Equals(Environment.GetEnvironmentVariable("BENCHMARK_SIMULATE_LATENCY"), "1");
+
     /// <inheritdoc cref="IHttpRequestInterceptor.OnCreateAsync"/>
     public ValueTask OnCreateAsync(
         HttpContext context,
@@ -11,7 +14,7 @@ public sealed class BenchmarkHttpRequestInterceptor : IHttpRequestInterceptor
         OperationRequestBuilder requestBuilder,
         CancellationToken cancellationToken)
     {
-        if (context.Request.Headers.ContainsKey("benchmark-delay"))
+        if (s_simulateLatency)
         {
             return OnCreateWaitAsync(context, requestBuilder);
         }

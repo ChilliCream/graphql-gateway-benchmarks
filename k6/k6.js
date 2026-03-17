@@ -76,7 +76,7 @@ function resolveRampFloorVUs(value, peakVUs) {
 }
 
 function resolveBurstCount(value, totalSeconds) {
-  const fallbackBursts = 2;
+  const fallbackBursts = 1;
   const configured = parsePositiveInt(value);
   const requested = configured === null ? fallbackBursts : configured;
   const maxBursts = Math.max(1, Math.floor(Math.max(totalSeconds, 1) / 2));

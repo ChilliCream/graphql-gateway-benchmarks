@@ -2,7 +2,7 @@
 
 Performance benchmarks comparing GraphQL gateway implementations across federation and composite schema approaches.
 
-**Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Burst Load](./RESULTS_BURST.md)
+**Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Burst Load](./RESULTS_BURST.md) | [Constant Load with Latency](./RESULTS_CONSTANT_LATENCY.md)
 
 ## Benchmark setup
 
@@ -44,7 +44,7 @@ Both benchmark families support both subgraph variants:
 ### Run
 
 ```bash
-./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|burst|ramping]
+./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping]
 ```
 
 Examples:
@@ -61,6 +61,9 @@ Examples:
 
 # burst mode
 ./k6/benchmark.sh apollo-federation/gateways/cosmo burst
+
+# constant-latency mode (.NET subgraphs with simulated 4ms IO delay)
+./k6/benchmark.sh apollo-federation/gateways/grafbase subgraphs-net constant-latency
 ```
 
 ### What happens
@@ -84,7 +87,7 @@ Environment variables:
 | `BENCH_RUNS` | `10` | Measured runs (plus one warmup run) |
 | `BENCH_VUS` | `50` constant / `500` burst | VU target passed to `k6/k6.js` |
 | `BENCH_RAMP_FLOOR_VUS` | `50` | Floor VUs for burst mode (`ramping-vus` executor) |
-| `BENCH_BURST_COUNT` | `2` | Number of burst waves in burst mode (legacy `BENCH_SPIKE_COUNT` still supported) |
+| `BENCH_BURST_COUNT` | `1` | Number of burst waves in burst mode (legacy `BENCH_SPIKE_COUNT` still supported) |
 | `BENCH_DISPLAY_NAME` | _(auto)_ | Override report display name |
 | `BENCH_SUBGRAPH_TECH` | _(auto)_ | Explicit subgraph tech label (`rust` / `.net`) |
 | `USE_PREBUILT_SUBGRAPHS` | `0` | Skip `build.sh` and expect prebuilt subgraph artifact |
@@ -129,10 +132,12 @@ Workflow: [benchmark.yml](./.github/workflows/benchmark.yml)
 - Benchmark stages on dedicated benchmark runner:
   - `benchmark-constant`
   - `benchmark-burst` (runs after constant completes)
+  - `benchmark-constant-latency` (.NET subgraphs only, 4ms simulated IO delay; runs after burst)
 - Result generation:
   - `generate-results-constant`
   - `generate-results-burst`
-  - final `benchmark-summary` job publishes both result docs in the run summary
+  - `generate-results-constant-latency`
+  - final `benchmark-summary` job publishes all result docs in the run summary
 - Result documents are committed back to the branch by the generator jobs
 
 ## Acknowledgments

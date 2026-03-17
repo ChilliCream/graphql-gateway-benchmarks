@@ -43,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       gateways: ${{ steps.build.outputs.gateways }}
+      gateways_net: ${{ steps.build.outputs.gateways_net }}
       gateway_builds: ${{ steps.build.outputs.gateway_builds }}
     steps:
       - name: Build gateway matrix
@@ -174,6 +175,8 @@ jobs:
               sys.exit(1)
 
           matrix_json = json.dumps(chosen, separators=(",", ":"))
+          chosen_net = [e for e in chosen if e["subgraph_tech"] == ".net"]
+          matrix_net_json = json.dumps(chosen_net, separators=(",", ":"))
           builds_by_artifact = {}
           for entry in chosen:
               artifact = entry["gateway_artifact"]
@@ -187,6 +190,7 @@ jobs:
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"gateways={matrix_json}\n")
+              fh.write(f"gateways_net={matrix_net_json}\n")
               fh.write(f"gateway_builds={build_matrix_json}\n")
 
           print("Selected gateway entries:")
@@ -490,6 +494,110 @@ jobs:
           name: results-${{ matrix.gateway.name }}-burst
           path: ${{ matrix.gateway.path }}/results/
 
+  benchmark-constant-latency:
+    needs:
+      - prepare-matrix
+      - build-subgraphs
+      - build-gateways
+      - benchmark-burst
+    if: ${{ always() && !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways_net) }}
+    runs-on:
+      group: benchmarking-1
+    name: ${{ matrix.gateway.name }} (constant-latency)
+    env:
+      BENCH_RUNS: ${{ inputs.runs || '10' }}
+      MEASURE_SECONDS: ${{ inputs.duration || '120' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download prebuilt gateway
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.gateway.gateway_artifact }}
+          path: prebuilt-gateway/
+
+      - name: Restore prebuilt gateway
+        run: |
+          GATEWAY_ARCHIVE="$(find prebuilt-gateway -type f -name '*.tar.gz' | head -n1)"
+          if [[ -z "$GATEWAY_ARCHIVE" ]]; then
+            echo "Error: prebuilt gateway archive not found"
+            find prebuilt-gateway -maxdepth 3 -print
+            exit 1
+          fi
+          tar -xzf "$GATEWAY_ARCHIVE" -C .
+          if [[ -f apollo-federation/gateways/apollo-router/router ]]; then
+            chmod +x apollo-federation/gateways/apollo-router/router
+          fi
+          if [[ -f apollo-federation/gateways/cosmo/cosmo ]]; then
+            chmod +x apollo-federation/gateways/cosmo/cosmo
+          fi
+          if [[ -f apollo-federation/gateways/grafbase/grafbase-gateway ]]; then
+            chmod +x apollo-federation/gateways/grafbase/grafbase-gateway
+          fi
+          if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
+            chmod +x apollo-federation/gateways/hive-router/hive_router
+          fi
+
+      - name: Download prebuilt subgraphs
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.gateway.subgraphs_artifact }}
+          path: prebuilt-subgraphs/
+
+      - name: Restore prebuilt subgraphs
+        run: |
+          SUBGRAPHS_ARCHIVE="$(find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1)"
+          if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
+            echo "Error: prebuilt subgraphs archive not found"
+            find prebuilt-subgraphs -maxdepth 3 -print
+            exit 1
+          fi
+          tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+
+      - name: Kill stale perfrunner processes
+        run: |
+          sudo pkill -u perfrunner || true
+          sleep 1
+          sudo pkill -9 -u perfrunner || true
+
+      - name: Prepare workspace for perfrunner
+        run: |
+          sudo chmod -R a+rX,g+rwX .
+          sudo chown -R perfrunner:github-runner .
+          sudo find . -type d -exec chmod g+s {} +
+
+      - name: Run benchmark
+        run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant-latency
+        env:
+          BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
+          USE_PREBUILT_SUBGRAPHS: "1"
+          USE_PREBUILT_GATEWAY: "1"
+
+      - name: Kill all perfrunner processes
+        if: always()
+        run: |
+          echo "Killing all perfrunner processes..."
+          sudo pkill -u perfrunner || true
+          sleep 2
+          sudo pkill -9 -u perfrunner || true
+          echo "Done."
+
+      - name: Reclaim workspace ownership
+        if: always()
+        run: sudo chown -R $(id -u):$(id -g) .
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.gateway.name }}-constant-latency
+          path: ${{ matrix.gateway.path }}/results/
+
   generate-results-constant:
     needs: benchmark-constant
     if: ${{ always() && !cancelled() }}
@@ -562,10 +670,48 @@ jobs:
           git diff --cached --quiet || git commit -m "Update burst benchmark results"
           git push
 
+  generate-results-constant-latency:
+    needs:
+      - benchmark-constant-latency
+      - generate-results-burst
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*-constant-latency
+          path: artifacts/
+
+      - name: Generate constant-latency result document
+        run: python3 k6/generate-results.py artifacts/ .
+
+      - name: Write constant-latency summary
+        run: |
+          echo "# Benchmark Results (Constant Latency)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ -f RESULTS_CONSTANT_LATENCY.md ]]; then
+            cat RESULTS_CONSTANT_LATENCY.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No constant-latency results were generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Commit constant-latency results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RESULTS_CONSTANT_LATENCY.md
+          git diff --cached --quiet || git commit -m "Update constant-latency benchmark results"
+          git push
+
   benchmark-summary:
     needs:
       - generate-results-constant
       - generate-results-burst
+      - generate-results-constant-latency
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -594,6 +740,14 @@ jobs:
 
           if [[ -f RESULTS_BURST.md ]]; then
             cat RESULTS_BURST.md >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
           else
             echo "No burst results were generated." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ -f RESULTS_CONSTANT_LATENCY.md ]]; then
+            cat RESULTS_CONSTANT_LATENCY.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No constant-latency results were generated." >> $GITHUB_STEP_SUMMARY
           fi

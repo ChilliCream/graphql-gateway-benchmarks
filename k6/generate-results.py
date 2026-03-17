@@ -238,6 +238,16 @@ def generate_markdown(mode, results):
         lines.append(
             f"This scenario executes a constant load of **{vus} VUs** over **{duration}**."
         )
+    elif mode == "constant-latency":
+        lines.append("## Overview for: `constant-vus-with-latency`")
+        lines.append("")
+        lines.append(SCENARIO_DESCRIPTION)
+        lines.append("")
+        lines.append(
+            f"This scenario executes a constant load of **{vus} VUs** over **{duration}** "
+            f"with a simulated **4ms IO delay** on each subgraph request. "
+            f"Only .NET subgraphs are used."
+        )
     else:
         lines.append("## Overview for: `burst-vus`")
         lines.append("")
@@ -371,7 +381,12 @@ def main():
     print(f"Found {len(results)} result(s)")
     os.makedirs(output_dir, exist_ok=True)
 
-    for mode, filename in [("constant", "RESULTS_CONSTANT.md"), ("ramping", "RESULTS_BURST.md")]:
+    for mode, filename in [
+        ("constant", "RESULTS_CONSTANT.md"),
+        ("ramping", "RESULTS_BURST.md"),       # legacy metadata value
+        ("burst", "RESULTS_BURST.md"),
+        ("constant-latency", "RESULTS_CONSTANT_LATENCY.md"),
+    ]:
         md = generate_markdown(mode, results)
         if md:
             output_path = os.path.join(output_dir, filename)

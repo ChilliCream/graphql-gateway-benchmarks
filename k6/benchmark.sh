@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # benchmark.sh — Full benchmark orchestrator
 #
 # Usage:
-#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|burst|ramping]
+#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping]
 #
 # Examples:
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate
@@ -26,7 +26,7 @@ set -Eeuo pipefail
 # ---- Args -------------------------------------------------------------------
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <gateway-path> [subgraphs-dir] [constant|burst|ramping]"
+  echo "Usage: $0 <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping]"
   echo "  e.g. $0 composite-schema/gateways/hotchocolate"
   echo "  e.g. $0 composite-schema/gateways/hotchocolate subgraphs-rust"
   exit 1
@@ -38,11 +38,18 @@ LOAD_MODE="constant"
 LOAD_MODE_LABEL="constant"
 
 # Parse remaining args: auto-detect mode vs subgraphs override
+SIMULATE_LATENCY=false
 for arg in "${@:2}"; do
   case "$arg" in
     constant)
       LOAD_MODE="constant"
       LOAD_MODE_LABEL="constant"
+      ;;
+    constant-latency)
+      # Same k6 scenario as "constant", but subgraphs simulate IO latency.
+      LOAD_MODE="constant"
+      LOAD_MODE_LABEL="constant-latency"
+      SIMULATE_LATENCY=true
       ;;
     burst|ramping)
       # Keep "ramping" internal for existing profiles.json + k6 mode compatibility.
@@ -347,6 +354,7 @@ run_as_perfrunner() {
           FORK="${FORK:-}" \
           BENCH_SUBGRAPH_TECH="${BENCH_SUBGRAPH_TECH:-}" \
           BENCH_SUBGRAPH_VARIANT="${BENCH_SUBGRAPH_VARIANT:-}" \
+          BENCHMARK_SIMULATE_LATENCY="${BENCHMARK_SIMULATE_LATENCY:-}" \
       "$@"
   else
     "$@"
@@ -537,6 +545,11 @@ else
 fi
 
 # ---- Start subgraphs --------------------------------------------------------
+
+if [[ "$SIMULATE_LATENCY" == true ]]; then
+  export BENCHMARK_SIMULATE_LATENCY="1"
+  echo "Latency simulation: enabled (BENCHMARK_SIMULATE_LATENCY=1)"
+fi
 
 echo ""
 echo "=== Starting subgraphs ==="
@@ -774,7 +787,7 @@ json.dump({
     'machine_cores': sys.argv[16],
     'machine_ram': sys.argv[17]
 }, open(sys.argv[8], 'w'), indent=2)
-" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION" "$SUBGRAPH_VARIANT" "$SUBGRAPH_TECH" "$MACHINE_HOSTNAME" "$MACHINE_OS" "$MACHINE_CPU" "$MACHINE_CORES" "$MACHINE_RAM"
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE_LABEL" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION" "$SUBGRAPH_VARIANT" "$SUBGRAPH_TECH" "$MACHINE_HOSTNAME" "$MACHINE_OS" "$MACHINE_CPU" "$MACHINE_CORES" "$MACHINE_RAM"
 
   echo "Results for run $RUN: $RESULT_DIR"
 
