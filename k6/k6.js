@@ -9,19 +9,7 @@ const isConstant = mode === "constant";
 const parsedVus = parseInt(__ENV.BENCH_VUS || "", 10);
 const defaultVus = isConstant ? 50 : 500;
 const vus = Number.isFinite(parsedVus) && parsedVus > 0 ? parsedVus : defaultVus;
-const duration = __ENV.BENCH_OVER_TIME || "60s";
-const durationSeconds = parseDurationSeconds(duration);
-const rampFloorVUs = resolveRampFloorVUs(__ENV.BENCH_RAMP_FLOOR_VUS, vus);
-const burstCount = resolveBurstCount(
-  __ENV.BENCH_BURST_COUNT || __ENV.BENCH_SPIKE_COUNT,
-  durationSeconds
-);
-const rampingStages = buildBurstStages(
-  durationSeconds,
-  rampFloorVUs,
-  vus,
-  burstCount
-);
+const duration = __ENV.BENCH_OVER_TIME || (isConstant ? "120s" : "60s");
 
 const successRate = new Rate("success_rate");
 
@@ -45,8 +33,12 @@ export const options = isConstant
       scenarios: {
         stress: {
           executor: "ramping-vus",
-          startVUs: rampFloorVUs,
-          stages: rampingStages,
+          startVUs: 50,
+          stages: [
+            { duration: "10s", target: 50 },
+            { duration: "40s", target: vus },
+            { duration: "10s", target: 50 },
+          ],
           gracefulRampDown: "1s",
           gracefulStop: "0s",
         },
@@ -54,124 +46,6 @@ export const options = isConstant
       summaryTrendStats,
     };
 
-function parsePositiveInt(value) {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
-
-  const parsed = parseInt(String(value), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function resolveRampFloorVUs(value, peakVUs) {
-  const fallbackFloor = 50;
-  const configured = parsePositiveInt(value);
-  const candidate = configured === null ? fallbackFloor : configured;
-  const peak = Number.isFinite(peakVUs) && peakVUs > 0 ? Math.floor(peakVUs) : 1;
-  return Math.max(1, Math.min(candidate, peak));
-}
-
-function resolveBurstCount(value, totalSeconds) {
-  const fallbackBursts = 1;
-  const configured = parsePositiveInt(value);
-  const requested = configured === null ? fallbackBursts : configured;
-  const maxBursts = Math.max(1, Math.floor(Math.max(totalSeconds, 1) / 2));
-  return Math.max(1, Math.min(requested, maxBursts));
-}
-
-function parseDurationSeconds(value) {
-  const normalized = String(value || "").trim();
-  const match = normalized.match(/^(\d+)([smh]?)$/i);
-  if (!match) {
-    return 60;
-  }
-
-  const amount = parseInt(match[1], 10);
-  const unit = (match[2] || "s").toLowerCase();
-
-  if (unit === "m") {
-    return amount * 60;
-  }
-  if (unit === "h") {
-    return amount * 3600;
-  }
-
-  return amount;
-}
-
-function buildBurstStages(totalSeconds, floorVUs, targetVUs, bursts) {
-  const validTotal = Number.isFinite(totalSeconds)
-    ? Math.max(1, Math.floor(totalSeconds))
-    : 60;
-
-  if (validTotal === 1) {
-    return [{ duration: "1s", target: targetVUs }];
-  }
-
-  const stageList = [];
-  const pushStage = (seconds, target) => {
-    if (!Number.isFinite(seconds) || seconds <= 0) {
-      return;
-    }
-
-    const duration = `${Math.floor(seconds)}s`;
-    const last = stageList.length > 0 ? stageList[stageList.length - 1] : null;
-    if (last && last.target === target) {
-      const lastSeconds = parseDurationSeconds(last.duration);
-      last.duration = `${lastSeconds + Math.floor(seconds)}s`;
-      return;
-    }
-
-    stageList.push({ duration, target });
-  };
-  const burstCountSafe = Math.max(1, Math.floor(bursts));
-  const baseSegment = Math.floor(validTotal / burstCountSafe);
-  const remainder = validTotal - baseSegment * burstCountSafe;
-
-  for (let i = 0; i < burstCountSafe; i++) {
-    let segmentSeconds = baseSegment + (i < remainder ? 1 : 0);
-    if (segmentSeconds <= 0) {
-      continue;
-    }
-
-    if (segmentSeconds === 1) {
-      pushStage(1, targetVUs);
-      continue;
-    }
-
-    if (segmentSeconds === 2) {
-      pushStage(1, targetVUs);
-      pushStage(1, floorVUs);
-      continue;
-    }
-
-    // Per burst segment: floor hold + ramp to peak + ramp back to floor.
-    const holdSeconds = Math.floor(segmentSeconds / 3);
-    const upSeconds = Math.floor(segmentSeconds / 3);
-    const downSeconds = segmentSeconds - holdSeconds - upSeconds;
-
-    if (holdSeconds > 0) {
-      pushStage(holdSeconds, floorVUs);
-    }
-    if (upSeconds > 0) {
-      pushStage(upSeconds, targetVUs);
-    }
-    if (downSeconds > 0) {
-      pushStage(downSeconds, floorVUs);
-    }
-  }
-
-  return stageList.length > 0
-    ? stageList
-    : [
-        { duration: "1s", target: targetVUs },
-        { duration: "1s", target: floorVUs },
-      ];
-}
 
 export function setup() {
   for (let i = 0; i < vus * 2; i++) {

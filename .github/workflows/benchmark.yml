@@ -633,6 +633,13 @@ jobs:
           git diff --cached --quiet || git commit -m "Update constant benchmark results"
           git push
 
+      - name: Upload combined constant results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-results-constant
+          path: artifacts/
+
   generate-results-burst:
     needs:
       - benchmark-burst
@@ -670,6 +677,13 @@ jobs:
           git diff --cached --quiet || git commit -m "Update burst benchmark results"
           git push
 
+      - name: Upload combined burst results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-results-burst
+          path: artifacts/
+
   generate-results-constant-latency:
     needs:
       - benchmark-constant-latency
@@ -706,6 +720,13 @@ jobs:
           git add RESULTS_CONSTANT_LATENCY.md
           git diff --cached --quiet || git commit -m "Update constant-latency benchmark results"
           git push
+
+      - name: Upload combined constant-latency results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-results-constant-latency
+          path: artifacts/
 
   benchmark-summary:
     needs:

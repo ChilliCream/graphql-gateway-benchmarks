@@ -62,7 +62,11 @@ for arg in "${@:2}"; do
   esac
 done
 
-MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
+if [[ "$LOAD_MODE_LABEL" == "burst" ]]; then
+  MEASURE_SECONDS="${MEASURE_SECONDS:-60}"
+else
+  MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
+fi
 BENCH_RUNS="${BENCH_RUNS:-10}"
 
 # ---- Machine info ------------------------------------------------------------

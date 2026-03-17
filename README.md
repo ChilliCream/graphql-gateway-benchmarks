@@ -4,9 +4,17 @@ Performance benchmarks comparing GraphQL gateway implementations across federati
 
 **Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Burst Load](./RESULTS_BURST.md) | [Constant Load with Latency](./RESULTS_CONSTANT_LATENCY.md)
 
-## Benchmark setup
+## Test categories
 
-Each benchmark runs a gateway against 4 subgraphs (`Accounts`, `Inventory`, `Products`, `Reviews`) and executes a heavy nested query.
+Each benchmark runs a gateway against 4 subgraphs (`Accounts`, `Inventory`, `Products`, `Reviews`) and executes a heavy nested query. There are three test categories, each designed to measure different aspects of gateway performance:
+
+- **Constant Load** (`constant`) — 50 VUs for 120s. Simulates stable, sustained traffic against a gateway without any artificial latency on the subgraphs. Measures raw gateway throughput and how well it handles a steady request rate.
+
+- **Constant Load with Latency** (`constant-latency`) — 50 VUs for 120s, .NET subgraphs only. Simulates more realistic requests by adding a 4ms delay per subgraph HTTP request, accounting for the database or service calls that would normally happen inside a subgraph. Shows how gateways perform when subgraph response times are non-trivial.
+
+- **Burst** (`burst`) — 60s total, single burst from 50 to 500 VUs. Simulates a short, intense spike of traffic to see how gateways handle sudden load increases and recover afterward.
+
+## Benchmark setup
 
 Subgraph variants:
 - `subgraphs-rust` = Rust (`async-graphql` + `axum`)
@@ -83,11 +91,9 @@ Environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEASURE_SECONDS` | `120` | Benchmark measurement duration |
+| `MEASURE_SECONDS` | `120` (constant) / `60` (burst) | Benchmark measurement duration |
 | `BENCH_RUNS` | `10` | Measured runs (plus one warmup run) |
 | `BENCH_VUS` | `50` constant / `500` burst | VU target passed to `k6/k6.js` |
-| `BENCH_RAMP_FLOOR_VUS` | `50` | Floor VUs for burst mode (`ramping-vus` executor) |
-| `BENCH_BURST_COUNT` | `1` | Number of burst waves in burst mode (legacy `BENCH_SPIKE_COUNT` still supported) |
 | `BENCH_DISPLAY_NAME` | _(auto)_ | Override report display name |
 | `BENCH_SUBGRAPH_TECH` | _(auto)_ | Explicit subgraph tech label (`rust` / `.net`) |
 | `USE_PREBUILT_SUBGRAPHS` | `0` | Skip `build.sh` and expect prebuilt subgraph artifact |
