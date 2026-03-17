@@ -142,6 +142,14 @@ if command -v sudo &>/dev/null && sudo -n true &>/dev/null; then
   CAN_SUDO=true
 fi
 
+run_with_optional_sudo() {
+  if [[ "$CAN_SUDO" == true ]]; then
+    sudo -n "$@" 2>/dev/null || "$@" 2>/dev/null || true
+  else
+    "$@" 2>/dev/null || true
+  fi
+}
+
 # ---- Execution context --------------------------------------------------------
 
 echo ""
@@ -159,6 +167,62 @@ SUBGRAPH_PID=""
 GATEWAY_PID=""
 GATEWAY_METRIC_PID=""
 MONITOR_PID=""
+BENCHMARK_PORTS=(5220 5221 5222 5223 5224)
+
+resolve_listener_pids_by_port() {
+  local port="$1"
+  local pids=""
+
+  if command -v lsof &>/dev/null; then
+    pids="$(run_with_optional_sudo lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | awk 'NF' | sort -u)"
+  fi
+
+  if [[ -z "$pids" ]] && command -v ss &>/dev/null; then
+    pids="$(run_with_optional_sudo ss -ltnp "sport = :$port" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | awk 'NF' | sort -u)"
+  fi
+
+  if [[ -z "$pids" ]] && command -v fuser &>/dev/null; then
+    pids="$(run_with_optional_sudo fuser -n tcp "$port" | tr ' ' '\n' | awk '/^[0-9]+$/' | sort -u)"
+  fi
+
+  [[ -n "$pids" ]] || return 1
+  printf "%s\n" "$pids"
+}
+
+release_benchmark_ports() {
+  local port
+  local pids
+  local pid
+  local released_any=false
+
+  for port in "${BENCHMARK_PORTS[@]}"; do
+    pids="$(resolve_listener_pids_by_port "$port" || true)"
+    [[ -n "$pids" ]] || continue
+
+    if [[ "$released_any" == false ]]; then
+      echo "Releasing benchmark ports: ${BENCHMARK_PORTS[*]}"
+      released_any=true
+    fi
+
+    echo "  Port $port occupied by PID(s): $(echo "$pids" | tr '\n' ' ' | xargs)"
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      run_with_optional_sudo kill -TERM "$pid"
+    done <<< "$pids"
+  done
+
+  if [[ "$released_any" == true ]]; then
+    sleep 0.5
+    for port in "${BENCHMARK_PORTS[@]}"; do
+      pids="$(resolve_listener_pids_by_port "$port" || true)"
+      [[ -n "$pids" ]] || continue
+      while IFS= read -r pid; do
+        [[ -z "$pid" ]] && continue
+        run_with_optional_sudo kill -KILL "$pid"
+      done <<< "$pids"
+    done
+  fi
+}
 
 cleanup() {
   echo ""
@@ -170,6 +234,7 @@ cleanup() {
   for pid in "$GATEWAY_PID" "$SUBGRAPH_PID"; do
     [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null || true
   done
+  release_benchmark_ports
   echo "Done."
 }
 trap cleanup EXIT INT TERM
@@ -386,7 +451,7 @@ list_descendant_pids() {
     queue=("${queue[@]:1}")
     while IFS= read -r child; do
       [[ -z "$child" ]] && continue
-      echo "$child"
+      printf "%s\n" "$child" 2>/dev/null || return 0
       queue+=("$child")
     done < <(pgrep -P "$current" 2>/dev/null || true)
   done
@@ -468,14 +533,6 @@ resolve_listener_pid_by_port() {
 
   [[ -z "$port" ]] && return 1
 
-  run_lookup_cmd() {
-    if [[ "$CAN_SUDO" == true ]]; then
-      sudo -n "$@" 2>/dev/null || "$@" 2>/dev/null || true
-    else
-      "$@" 2>/dev/null || true
-    fi
-  }
-
   # Prefer lsof when available because it directly reports LISTEN sockets.
   if command -v lsof &>/dev/null; then
     while IFS= read -r candidate; do
@@ -488,17 +545,17 @@ resolve_listener_pid_by_port() {
         pid="$candidate"
         break
       fi
-    done < <(run_lookup_cmd lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | sort -u)
+    done < <(run_with_optional_sudo lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | sort -u)
   fi
 
   # Fallback: parse PID from ss output.
   if [[ -z "$pid" ]] && command -v ss &>/dev/null; then
-    pid="$(run_lookup_cmd ss -ltnp "sport = :$port" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -n1)"
+    pid="$(run_with_optional_sudo ss -ltnp "sport = :$port" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -n1)"
   fi
 
   # Last resort.
   if [[ -z "$pid" ]] && command -v fuser &>/dev/null; then
-    pid="$(run_lookup_cmd fuser -n tcp "$port" | awk '{print $1}')"
+    pid="$(run_with_optional_sudo fuser -n tcp "$port" | awk '{print $1}')"
   fi
 
   [[ -n "$pid" ]] || return 1
@@ -557,6 +614,7 @@ fi
 
 echo ""
 echo "=== Starting subgraphs ==="
+release_benchmark_ports
 (cd "$SUBGRAPHS_DIR" && run_pinned_as_perfrunner "$SUBGRAPH_CPUSET" bash start.sh) &
 SUBGRAPH_PID=$!
 echo "Subgraphs PID: $SUBGRAPH_PID"
