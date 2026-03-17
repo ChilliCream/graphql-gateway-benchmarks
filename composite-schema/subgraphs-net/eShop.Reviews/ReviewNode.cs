@@ -12,8 +12,8 @@ public static partial class ReviewNode
         => review.Id;
 
     public static User? GetAuthor([Parent] Review review)
-        => new() { Id = review.AuthorId };
+        => UserQueries.Users.TryGetValue(review.AuthorId, out var user) ? user : null;
 
     public static Product? GetProduct([Parent] Review review)
-        => new() { Upc = review.ProductUpc };
+        => ProductQueries.Products.TryGetValue(review.ProductUpc, out var product) ? product : null;
 }

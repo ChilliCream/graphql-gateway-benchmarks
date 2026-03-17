@@ -1,4 +1,3 @@
-using HotChocolate;
 using HotChocolate.Types;
 
 namespace eShop.Accounts;

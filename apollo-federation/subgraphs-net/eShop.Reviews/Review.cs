@@ -17,9 +17,11 @@ public sealed class Review
 
     public required string ProductUpc { get; init; }
 
-    public User GetAuthor() => new() { Id = AuthorId, Username = "urigo" };
+    public User? GetAuthor()
+        => User.Users.TryGetValue(AuthorId, out var user) ? user : null;
 
-    public Product GetProduct() => new() { Upc = ProductUpc };
+    public Product? GetProduct()
+        => Product.Products.TryGetValue(ProductUpc, out var product) ? product : null;
 
     [ReferenceResolver]
     public static Review? ResolveReference(string id)
