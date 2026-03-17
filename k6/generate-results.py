@@ -211,8 +211,15 @@ def generate_markdown(mode, results):
     entries.sort(key=lambda e: e["median_rps"], reverse=True)
 
     first = mode_results[0]["summary"]
+    first_metadata = mode_results[0].get("metadata", {})
     vus = first.get("vus", 50 if mode == "constant" else 500)
     duration = first.get("duration", "120s")
+    try:
+        measured_runs = int(first_metadata.get("total_runs", 9))
+    except (TypeError, ValueError):
+        measured_runs = 9
+    measured_runs = max(1, measured_runs)
+    total_runs = measured_runs + 1
 
     lines = []
 
@@ -224,11 +231,11 @@ def generate_markdown(mode, results):
         "- **Rust Subgraphs** = [async-graphql](https://github.com/async-graphql/async-graphql) + axum\n"
         "- **.NET Subgraphs** = [HotChocolate](https://github.com/ChilliCream/graphql-platform)\n"
         "\n"
-        "**Methodology:** Each gateway executes 11 runs of {duration} each. The first run is a "
-        "full-duration warmup (discarded). The remaining 10 runs are measured. Results are ranked "
-        "by **median RPS** across the 10 measured runs, with best/worst/CV% reported for "
+        "**Methodology:** Each gateway executes {total_runs} runs of {duration} each. The first run is a "
+        "full-duration warmup (discarded). The remaining {measured_runs} runs are measured. Results are ranked "
+        "by **median RPS** across the {measured_runs} measured runs, with best/worst/CV% reported for "
         "transparency."
-    ).format(duration=duration)
+    ).format(duration=duration, total_runs=total_runs, measured_runs=measured_runs)
 
     if mode == "constant":
         lines.append("## Overview for: `constant-vus-over-time`")

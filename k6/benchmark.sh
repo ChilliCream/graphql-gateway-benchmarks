@@ -16,11 +16,11 @@ set -Eeuo pipefail
 # Environment variables:
 #   MEASURE_SECONDS  Benchmark measurement duration (default: 120)
 #   BENCH_VUS        Virtual users (passed through to k6.js)
-#   BENCH_RUNS       Number of measured iterations per benchmark (default: 10, median used)
+#   BENCH_RUNS       Number of measured iterations per benchmark (default: 9, median used)
 #
 # Methodology:
-#   11 runs total: 1 full-duration warmup (discarded) + 10 measured runs.
-#   The median of the 10 measured runs is the primary result.
+#   10 runs total: 1 full-duration warmup (discarded) + 9 measured runs.
+#   The median of the 9 measured runs is the primary result.
 # =============================================================================
 
 # ---- Args -------------------------------------------------------------------
@@ -67,7 +67,7 @@ if [[ "$LOAD_MODE_LABEL" == "burst" ]]; then
 else
   MEASURE_SECONDS="${MEASURE_SECONDS:-120}"
 fi
-BENCH_RUNS="${BENCH_RUNS:-10}"
+BENCH_RUNS="${BENCH_RUNS:-9}"
 
 # ---- Machine info ------------------------------------------------------------
 

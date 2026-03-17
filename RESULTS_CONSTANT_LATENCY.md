@@ -6,7 +6,7 @@ Results are split by subgraph technology:
 - **Rust Subgraphs** = [async-graphql](https://github.com/async-graphql/async-graphql) + axum
 - **.NET Subgraphs** = [HotChocolate](https://github.com/ChilliCream/graphql-platform)
 
-**Methodology:** Each gateway executes 11 runs of 120s each. The first run is a full-duration warmup (discarded). The remaining 10 runs are measured. Results are ranked by **median RPS** across the 10 measured runs, with best/worst/CV% reported for transparency.
+**Methodology:** Each gateway executes 10 runs of 120s each. The first run is a full-duration warmup (discarded). The remaining 9 runs are measured. Results are ranked by **median RPS** across the 9 measured runs, with best/worst/CV% reported for transparency.
 
 This scenario executes a constant load of **50 VUs** over **120s** with a simulated **4ms IO delay** on each subgraph request. Only .NET subgraphs are used.
 
@@ -406,4 +406,3 @@ This scenario executes a constant load of **50 VUs** over **120s** with a simula
 ### Footnotes
 
 - Benchmark hardware #1: host=ccbench1, os=Linux 5.15.0-173-generic, cpu=AMD Ryzen 7 5700G with Radeon Graphics, cores=16 logical (16 CPUs), ram=122 GB
-

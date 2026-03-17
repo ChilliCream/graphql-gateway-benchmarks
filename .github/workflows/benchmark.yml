@@ -25,7 +25,7 @@ on:
       runs:
         description: 'Number of benchmark runs per gateway'
         required: false
-        default: '10'
+        default: '9'
       duration:
         description: 'Duration per run in seconds'
         required: false
@@ -281,7 +281,7 @@ jobs:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (constant)
     env:
-      BENCH_RUNS: ${{ inputs.runs || '10' }}
+      BENCH_RUNS: ${{ inputs.runs || '9' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
       - uses: actions/checkout@v4
@@ -395,7 +395,7 @@ jobs:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (burst)
     env:
-      BENCH_RUNS: ${{ inputs.runs || '10' }}
+      BENCH_RUNS: ${{ inputs.runs || '9' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
       - uses: actions/checkout@v4
@@ -509,7 +509,7 @@ jobs:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (constant-latency)
     env:
-      BENCH_RUNS: ${{ inputs.runs || '10' }}
+      BENCH_RUNS: ${{ inputs.runs || '9' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
       - uses: actions/checkout@v4
@@ -747,7 +747,7 @@ jobs:
           echo "- Run: **Benchmark #${{ github.run_number }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Started (UTC): **${{ github.run_started_at || 'start-time-unavailable' }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Gateway selection: \`${{ inputs.gateway || 'all' }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Runs per gateway: \`${{ inputs.runs || '10' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Runs per gateway: \`${{ inputs.runs || '9' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Duration per run: \`${{ inputs.duration || '120' }}s\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
