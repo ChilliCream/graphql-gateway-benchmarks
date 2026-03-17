@@ -220,9 +220,9 @@ def generate_markdown(mode, results):
         "Each benchmark runs a GraphQL gateway with 4 subgraphs and executes a heavy nested "
         "query that exercises federation/composition capabilities.\n"
         "\n"
-        "Subgraph technology is reported in the `Subgraphs` column for each row:\n"
-        "- `rust` = [async-graphql](https://github.com/async-graphql/async-graphql) + axum\n"
-        "- `.net` = [HotChocolate](https://github.com/ChilliCream/graphql-platform)\n"
+        "Results are split by subgraph technology:\n"
+        "- **Rust Subgraphs** = [async-graphql](https://github.com/async-graphql/async-graphql) + axum\n"
+        "- **.NET Subgraphs** = [HotChocolate](https://github.com/ChilliCream/graphql-platform)\n"
         "\n"
         "**Methodology:** Each gateway executes 11 runs of {duration} each. The first run is a "
         "full-duration warmup (discarded). The remaining 10 runs are measured. Results are ranked "
@@ -247,31 +247,85 @@ def generate_markdown(mode, results):
             f"This scenario is a burst stress test with peaks up to **{vus} VUs** over **{duration}**."
         )
 
-    lines.append("")
-    lines.append("")
-    lines.append("### Comparison")
-    lines.append("")
+    # Split entries by subgraph technology
+    rust_entries = [e for e in entries if e["subgraph_tech"] == "rust"]
+    net_entries = [e for e in entries if e["subgraph_tech"] == ".net"]
+    other_entries = [e for e in entries if e["subgraph_tech"] not in ("rust", ".net")]
 
-    # Table header
-    lines.append(
-        "| Gateway | Subgraphs | Version | Median RPS | Best RPS | Worst RPS | CV% | Notes |"
-    )
-    lines.append(
-        "| :------ | :-------- | :------ | ---------: | -------: | --------: | --: | :---- |"
-    )
+    subgraph_groups = []
+    if rust_entries:
+        subgraph_groups.append(("Rust Subgraphs", rust_entries))
+    if net_entries:
+        subgraph_groups.append((".NET Subgraphs", net_entries))
+    if other_entries:
+        subgraph_groups.append(("Other Subgraphs", other_entries))
 
-    for entry in entries:
-        gw = entry["gateway"]
-        subgraphs = entry["subgraph_tech"]
-        ver = entry["version"]
-        notes = entry.get("notes", "")
+    # Emit comparison tables (no details yet)
+    for group_title, group_entries in subgraph_groups:
+        lines.append("")
+        lines.append("")
+        lines.append(f"### {group_title}")
+        lines.append("")
+
+        # Table header (no Subgraphs column — implicit from heading)
         lines.append(
-            f"| {gw} | {subgraphs} | {ver} | {entry['median_rps']:,} | "
-            f"{entry['best_rps']:,} | {entry['worst_rps']:,} | "
-            f"{entry['cv_pct']:.1f}% | {notes} |"
+            "| Gateway | Version | Median RPS | Best RPS | Worst RPS | CV% | Notes |"
+        )
+        lines.append(
+            "| :------ | :------ | ---------: | -------: | --------: | --: | :---- |"
         )
 
+        for entry in group_entries:
+            gw = entry["gateway"]
+            ver = entry["version"]
+            notes = entry.get("notes", "")
+            lines.append(
+                f"| {gw} | {ver} | {entry['median_rps']:,} | "
+                f"{entry['best_rps']:,} | {entry['worst_rps']:,} | "
+                f"{entry['cv_pct']:.1f}% | {notes} |"
+            )
+
+    # Expandable details — all at the bottom, grouped by subgraph tech
     lines.append("")
+    lines.append("")
+    lines.append("### Details")
+    lines.append("")
+
+    for group_title, group_entries in subgraph_groups:
+        for entry in group_entries:
+            gw = entry["gateway"]
+            ver = entry["version"]
+            display_name = entry.get("display_name", gw)
+            gw_label = f"{display_name} ({ver})" if ver else display_name
+            k6_txt = entry["k6_txt"].strip()
+
+            lines.append("<details>")
+            lines.append(f"  <summary>Summary for: {gw_label}</summary>")
+            lines.append("")
+            lines.append("  **K6 Output**")
+            lines.append("")
+            lines.append("")
+            lines.append("```")
+            lines.append(k6_txt)
+            lines.append("```")
+            lines.append("")
+            lines.append("")
+            lines.append("  **Performance Overview**")
+            lines.append("")
+            lines.append("")
+            lines.append("  **no-image-available**")
+            lines.append("")
+            lines.append("")
+            lines.append("")
+            lines.append("  **HTTP Overview**")
+            lines.append("")
+            lines.append("")
+            lines.append("  **no-image-available**")
+            lines.append("")
+            lines.append("")
+            lines.append("</details>")
+            lines.append("")
+
     lines.append("### Footnotes")
     lines.append("")
     hardware_profiles = collect_hardware_profiles(mode_results)
@@ -295,41 +349,6 @@ def generate_markdown(mode, results):
         lines.append("- Benchmark hardware: unavailable in metadata.")
 
     lines.append("")
-
-    # Expandable details per gateway
-    for entry in entries:
-        gw = entry["gateway"]
-        ver = entry["version"]
-        display_name = entry.get("display_name", gw)
-        gw_label = f"{display_name} ({ver})" if ver else display_name
-        k6_txt = entry["k6_txt"].strip()
-
-        lines.append("<details>")
-        lines.append(f"  <summary>Summary for: {gw_label}</summary>")
-        lines.append("")
-        lines.append("  **K6 Output**")
-        lines.append("")
-        lines.append("")
-        lines.append("```")
-        lines.append(k6_txt)
-        lines.append("```")
-        lines.append("")
-        lines.append("")
-        lines.append("  **Performance Overview**")
-        lines.append("")
-        lines.append("")
-        lines.append("  **no-image-available**")
-        lines.append("")
-        lines.append("")
-        lines.append("")
-        lines.append("  **HTTP Overview**")
-        lines.append("")
-        lines.append("")
-        lines.append("  **no-image-available**")
-        lines.append("")
-        lines.append("")
-        lines.append("</details>")
-        lines.append("")
 
     return "\n".join(lines)
 
