@@ -273,6 +273,8 @@ jobs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
+      - benchmark-constant-latency
+    if: ${{ always() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -499,7 +501,6 @@ jobs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
-      - benchmark-burst
     if: ${{ always() && !cancelled() }}
     strategy:
       fail-fast: false
@@ -599,7 +600,9 @@ jobs:
           path: ${{ matrix.gateway.path }}/results/
 
   generate-results-constant:
-    needs: benchmark-constant
+    needs:
+      - benchmark-constant
+      - generate-results-constant-latency
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -687,7 +690,6 @@ jobs:
   generate-results-constant-latency:
     needs:
       - benchmark-constant-latency
-      - generate-results-burst
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:

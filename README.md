@@ -136,13 +136,13 @@ Workflow: [benchmark.yml](./.github/workflows/benchmark.yml)
   - `build-subgraphs` (prebuilt artifacts)
   - `build-gateways` (prebuilt artifacts)
 - Benchmark stages on dedicated benchmark runner:
-  - `benchmark-constant`
+  - `benchmark-constant-latency` (.NET subgraphs only, 4ms simulated IO delay)
+  - `benchmark-constant` (runs after constant-latency completes)
   - `benchmark-burst` (runs after constant completes)
-  - `benchmark-constant-latency` (.NET subgraphs only, 4ms simulated IO delay; runs after burst)
 - Result generation:
+  - `generate-results-constant-latency`
   - `generate-results-constant`
   - `generate-results-burst`
-  - `generate-results-constant-latency`
   - final `benchmark-summary` job publishes all result docs in the run summary
 - Result documents are committed back to the branch by the generator jobs
 
