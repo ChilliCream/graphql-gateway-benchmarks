@@ -286,10 +286,10 @@ jobs:
         subgraphs: ${{ fromJson(needs.prepare-matrix.outputs.subgraph_builds) }}
     name: build-${{ matrix.subgraphs.path }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -303,7 +303,7 @@ jobs:
           tar -czf "prebuilt-subgraphs-${{ matrix.subgraphs.artifact }}.tar.gz" "${{ matrix.subgraphs.path }}"
 
       - name: Upload prebuilt subgraphs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.subgraphs.artifact }}
           path: prebuilt-subgraphs-${{ matrix.subgraphs.artifact }}.tar.gz
@@ -317,10 +317,10 @@ jobs:
         gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateway_builds) }}
     name: build-${{ matrix.gateway.artifact }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -335,7 +335,7 @@ jobs:
           tar -czf "prebuilt-gateway-${{ matrix.gateway.artifact }}.tar.gz" "${{ matrix.gateway.path }}"
 
       - name: Upload prebuilt gateway
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.gateway.artifact }}
           path: prebuilt-gateway-${{ matrix.gateway.artifact }}.tar.gz
@@ -358,10 +358,10 @@ jobs:
       BENCH_RUNS: ${{ inputs.runs || '9' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download prebuilt gateway
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.gateway.gateway_artifact }}
           path: prebuilt-gateway/
@@ -390,7 +390,7 @@ jobs:
 
       - name: Download prebuilt subgraphs
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.gateway.subgraphs_artifact }}
           path: prebuilt-subgraphs/
@@ -514,14 +514,14 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: results-${{ matrix.gateway.name }}-constant
           path: ${{ matrix.gateway.path }}/results/
 
       - name: Upload diagnostics
         if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: diagnostics-${{ matrix.gateway.name }}-constant
           path: ${{ matrix.gateway.path }}/diagnostics/
@@ -545,10 +545,10 @@ jobs:
       BENCH_RUNS: ${{ inputs.runs || '9' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download prebuilt gateway
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.gateway.gateway_artifact }}
           path: prebuilt-gateway/
@@ -577,7 +577,7 @@ jobs:
 
       - name: Download prebuilt subgraphs
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.gateway.subgraphs_artifact }}
           path: prebuilt-subgraphs/
@@ -701,14 +701,14 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: results-${{ matrix.gateway.name }}-burst
           path: ${{ matrix.gateway.path }}/results/
 
       - name: Upload diagnostics
         if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: diagnostics-${{ matrix.gateway.name }}-burst
           path: ${{ matrix.gateway.path }}/diagnostics/
@@ -731,10 +731,10 @@ jobs:
       BENCH_RUNS: ${{ inputs.runs || '9' }}
       MEASURE_SECONDS: ${{ inputs.duration || '120' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download prebuilt gateway
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.gateway.gateway_artifact }}
           path: prebuilt-gateway/
@@ -763,7 +763,7 @@ jobs:
 
       - name: Download prebuilt subgraphs
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.gateway.subgraphs_artifact }}
           path: prebuilt-subgraphs/
@@ -883,14 +883,14 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: results-${{ matrix.gateway.name }}-constant-latency
           path: ${{ matrix.gateway.path }}/results/
 
       - name: Upload diagnostics
         if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: diagnostics-${{ matrix.gateway.name }}-constant-latency
           path: ${{ matrix.gateway.path }}/diagnostics/
@@ -904,11 +904,11 @@ jobs:
     if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: results-*-constant
           path: artifacts/
@@ -946,7 +946,7 @@ jobs:
 
       - name: Upload combined constant results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: all-results-constant
           path: artifacts/
@@ -959,11 +959,11 @@ jobs:
     if: ${{ !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: results-*-burst
           path: artifacts/
@@ -1001,7 +1001,7 @@ jobs:
 
       - name: Upload combined burst results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: all-results-burst
           path: artifacts/
@@ -1013,11 +1013,11 @@ jobs:
     if: ${{ !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: results-*-constant-latency
           path: artifacts/
@@ -1055,7 +1055,7 @@ jobs:
 
       - name: Upload combined constant-latency results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: all-results-constant-latency
           path: artifacts/
@@ -1071,7 +1071,7 @@ jobs:
     if: ${{ !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
