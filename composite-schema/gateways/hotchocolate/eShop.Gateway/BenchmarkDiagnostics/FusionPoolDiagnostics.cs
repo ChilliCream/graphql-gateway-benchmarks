@@ -32,7 +32,7 @@ internal sealed class FusionPoolDiagnostics(IHostEnvironment environment) : Even
     {
         try
         {
-            var diagnosticsDirectory = Path.Combine(ResolveGatewayDirectory(), "diagnostics");
+            var diagnosticsDirectory = ResolveDiagnosticsDirectory();
             Directory.CreateDirectory(diagnosticsDirectory);
             var logPath = Path.Combine(diagnosticsDirectory, "fusion-diagnostics.log");
             _writer = new StreamWriter(
@@ -413,8 +413,16 @@ internal sealed class FusionPoolDiagnostics(IHostEnvironment environment) : Even
            sourceName.Contains("ResultStorePool", StringComparison.OrdinalIgnoreCase) ||
            sourceName.Contains("FetchResultStorePool", StringComparison.OrdinalIgnoreCase);
 
-    private string ResolveGatewayDirectory()
+    private string ResolveDiagnosticsDirectory()
     {
+        // Prefer explicit path from the workflow over discovery.
+        var envPath = Environment.GetEnvironmentVariable("BENCH_DIAGNOSTICS_DIR");
+        if (!string.IsNullOrWhiteSpace(envPath))
+        {
+            return Path.GetFullPath(envPath);
+        }
+
+        // As a fallback search for gateway.far to locate the gateway root.
         var candidates = new[]
         {
             environment.ContentRootPath,
@@ -433,11 +441,11 @@ internal sealed class FusionPoolDiagnostics(IHostEnvironment environment) : Even
             var fullPath = Path.GetFullPath(candidate);
             if (File.Exists(Path.Combine(fullPath, "gateway.far")))
             {
-                return fullPath;
+                return Path.Combine(fullPath, "diagnostics");
             }
         }
 
-        return Path.GetFullPath(environment.ContentRootPath);
+        return Path.Combine(Path.GetFullPath(environment.ContentRootPath), "diagnostics");
     }
 
     private void DisposeWriter()
