@@ -22,6 +22,16 @@ on:
           - hive-gateway-router-runtime
           - hive-router
           - hotchocolate
+      benchmark:
+        description: 'Benchmark mode'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - constant
+          - latency
+          - burst
       runs:
         description: 'Number of benchmark runs per gateway'
         required: false
@@ -30,6 +40,11 @@ on:
         description: 'Duration per run in seconds'
         required: false
         default: '120'
+      diagnostic_run:
+        description: 'Diagnostic run (collect diagnostics artifacts, skip result documents)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: gateway-benchmarks
@@ -46,7 +61,52 @@ jobs:
       gateways: ${{ steps.build.outputs.gateways }}
       gateways_net: ${{ steps.build.outputs.gateways_net }}
       gateway_builds: ${{ steps.build.outputs.gateway_builds }}
+      is_diagnostic: ${{ steps.flags.outputs.is_diagnostic }}
+      should_publish: ${{ steps.flags.outputs.should_publish }}
+      run_constant: ${{ steps.flags.outputs.run_constant }}
+      run_burst: ${{ steps.flags.outputs.run_burst }}
+      run_latency: ${{ steps.flags.outputs.run_latency }}
     steps:
+      - name: Compute run flags
+        id: flags
+        run: |
+          BENCHMARK="${{ inputs.benchmark || 'all' }}"
+          GATEWAY="${{ inputs.gateway || 'all' }}"
+          DIAGNOSTIC="${{ inputs.diagnostic_run }}"
+
+          IS_DIAGNOSTIC="false"
+          if [[ "$DIAGNOSTIC" == "true" ]]; then
+            IS_DIAGNOSTIC="true"
+          fi
+
+          SHOULD_PUBLISH="false"
+          if [[ "$GATEWAY" == "all" && "$BENCHMARK" == "all" && "$IS_DIAGNOSTIC" == "false" ]]; then
+            SHOULD_PUBLISH="true"
+          fi
+
+          RUN_CONSTANT="false"
+          if [[ "$BENCHMARK" == "all" || "$BENCHMARK" == "constant" ]]; then
+            RUN_CONSTANT="true"
+          fi
+
+          RUN_BURST="false"
+          if [[ "$BENCHMARK" == "all" || "$BENCHMARK" == "burst" ]]; then
+            RUN_BURST="true"
+          fi
+
+          RUN_LATENCY="false"
+          if [[ "$BENCHMARK" == "all" || "$BENCHMARK" == "latency" ]]; then
+            RUN_LATENCY="true"
+          fi
+
+          {
+            echo "is_diagnostic=$IS_DIAGNOSTIC"
+            echo "should_publish=$SHOULD_PUBLISH"
+            echo "run_constant=$RUN_CONSTANT"
+            echo "run_burst=$RUN_BURST"
+            echo "run_latency=$RUN_LATENCY"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build gateway matrix
         id: build
         env:
@@ -274,8 +334,7 @@ jobs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
-      - benchmark-constant-latency
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.run_constant == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -406,11 +465,24 @@ jobs:
           # Preserve github-runner as group owner for newly created files/dirs.
           sudo find . -type d -exec chmod g+s {} +
 
+      - name: Prepare diagnostics directory
+        if: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        run: |
+          mkdir -p "${{ matrix.gateway.path }}/diagnostics"
+          {
+            echo "diagnostic_run=true"
+            echo "mode=constant"
+            echo "gateway=${{ matrix.gateway.name }}"
+            echo "started_utc=${{ github.run_started_at || 'n/a' }}"
+            echo "run_id=${{ github.run_id }}"
+          } > "${{ matrix.gateway.path }}/diagnostics/run-info.txt"
+
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
+          BENCH_DIAGNOSTIC_RUN: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' && '1' || '0' }}
           USE_PREBUILT_SUBGRAPHS: "1"
           USE_PREBUILT_GATEWAY: "1"
 
@@ -434,13 +506,20 @@ jobs:
           name: results-${{ matrix.gateway.name }}-constant
           path: ${{ matrix.gateway.path }}/results/
 
+      - name: Upload diagnostics
+        if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.gateway.name }}-constant
+          path: ${{ matrix.gateway.path }}/diagnostics/
+          if-no-files-found: ignore
+
   benchmark-burst:
     needs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
-      - benchmark-constant
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.run_burst == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -571,11 +650,24 @@ jobs:
           # Preserve github-runner as group owner for newly created files/dirs.
           sudo find . -type d -exec chmod g+s {} +
 
+      - name: Prepare diagnostics directory
+        if: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        run: |
+          mkdir -p "${{ matrix.gateway.path }}/diagnostics"
+          {
+            echo "diagnostic_run=true"
+            echo "mode=burst"
+            echo "gateway=${{ matrix.gateway.name }}"
+            echo "started_utc=${{ github.run_started_at || 'n/a' }}"
+            echo "run_id=${{ github.run_id }}"
+          } > "${{ matrix.gateway.path }}/diagnostics/run-info.txt"
+
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
+          BENCH_DIAGNOSTIC_RUN: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' && '1' || '0' }}
           USE_PREBUILT_SUBGRAPHS: "1"
           USE_PREBUILT_GATEWAY: "1"
 
@@ -599,12 +691,20 @@ jobs:
           name: results-${{ matrix.gateway.name }}-burst
           path: ${{ matrix.gateway.path }}/results/
 
+      - name: Upload diagnostics
+        if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.gateway.name }}-burst
+          path: ${{ matrix.gateway.path }}/diagnostics/
+          if-no-files-found: ignore
+
   benchmark-constant-latency:
     needs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.run_latency == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -731,11 +831,24 @@ jobs:
           sudo chown -R perfrunner:github-runner .
           sudo find . -type d -exec chmod g+s {} +
 
+      - name: Prepare diagnostics directory
+        if: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        run: |
+          mkdir -p "${{ matrix.gateway.path }}/diagnostics"
+          {
+            echo "diagnostic_run=true"
+            echo "mode=constant-latency"
+            echo "gateway=${{ matrix.gateway.name }}"
+            echo "started_utc=${{ github.run_started_at || 'n/a' }}"
+            echo "run_id=${{ github.run_id }}"
+          } > "${{ matrix.gateway.path }}/diagnostics/run-info.txt"
+
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant-latency
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
+          BENCH_DIAGNOSTIC_RUN: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' && '1' || '0' }}
           USE_PREBUILT_SUBGRAPHS: "1"
           USE_PREBUILT_GATEWAY: "1"
 
@@ -759,12 +872,20 @@ jobs:
           name: results-${{ matrix.gateway.name }}-constant-latency
           path: ${{ matrix.gateway.path }}/results/
 
+      - name: Upload diagnostics
+        if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.gateway.name }}-constant-latency
+          path: ${{ matrix.gateway.path }}/diagnostics/
+          if-no-files-found: ignore
+
   generate-results-constant:
     needs:
       - prepare-matrix
       - benchmark-constant
       - generate-results-constant-latency
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -819,7 +940,7 @@ jobs:
       - prepare-matrix
       - benchmark-burst
       - generate-results-constant
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -873,7 +994,7 @@ jobs:
     needs:
       - prepare-matrix
       - benchmark-constant-latency
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -931,7 +1052,7 @@ jobs:
       - generate-results-constant
       - generate-results-burst
       - generate-results-constant-latency
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.prepare-matrix.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -949,6 +1070,8 @@ jobs:
           echo "- Run: **Benchmark #${{ github.run_number }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Started (UTC): **${{ github.run_started_at || 'start-time-unavailable' }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Gateway selection: \`${{ inputs.gateway || 'all' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Benchmark selection: \`${{ inputs.benchmark || 'all' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Diagnostic run: \`${{ inputs.diagnostic_run || 'false' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Runs per gateway: \`${{ inputs.runs || '9' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Duration per run: \`${{ inputs.duration || '120' }}s\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
