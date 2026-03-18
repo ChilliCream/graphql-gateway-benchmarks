@@ -488,6 +488,8 @@ jobs:
             echo "started_utc=${{ github.run_started_at || 'n/a' }}"
             echo "run_id=${{ github.run_id }}"
           } > "${{ matrix.gateway.path }}/diagnostics/run-info.txt"
+          sudo chown -R perfrunner:github-runner "${{ matrix.gateway.path }}/diagnostics"
+          sudo chmod -R u+rwX,g+rwX "${{ matrix.gateway.path }}/diagnostics"
 
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant
@@ -518,6 +520,13 @@ jobs:
         with:
           name: results-${{ matrix.gateway.name }}-constant
           path: ${{ matrix.gateway.path }}/results/
+
+      - name: Inspect diagnostics directory
+        if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        run: |
+          echo "Diagnostics directory: ${{ matrix.gateway.path }}/diagnostics"
+          ls -la "${{ matrix.gateway.path }}/diagnostics" || true
+          find "${{ matrix.gateway.path }}/diagnostics" -maxdepth 2 -type f -print | sort || true
 
       - name: Upload diagnostics
         if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
@@ -675,6 +684,8 @@ jobs:
             echo "started_utc=${{ github.run_started_at || 'n/a' }}"
             echo "run_id=${{ github.run_id }}"
           } > "${{ matrix.gateway.path }}/diagnostics/run-info.txt"
+          sudo chown -R perfrunner:github-runner "${{ matrix.gateway.path }}/diagnostics"
+          sudo chmod -R u+rwX,g+rwX "${{ matrix.gateway.path }}/diagnostics"
 
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
@@ -705,6 +716,13 @@ jobs:
         with:
           name: results-${{ matrix.gateway.name }}-burst
           path: ${{ matrix.gateway.path }}/results/
+
+      - name: Inspect diagnostics directory
+        if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        run: |
+          echo "Diagnostics directory: ${{ matrix.gateway.path }}/diagnostics"
+          ls -la "${{ matrix.gateway.path }}/diagnostics" || true
+          find "${{ matrix.gateway.path }}/diagnostics" -maxdepth 2 -type f -print | sort || true
 
       - name: Upload diagnostics
         if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
@@ -857,6 +875,8 @@ jobs:
             echo "started_utc=${{ github.run_started_at || 'n/a' }}"
             echo "run_id=${{ github.run_id }}"
           } > "${{ matrix.gateway.path }}/diagnostics/run-info.txt"
+          sudo chown -R perfrunner:github-runner "${{ matrix.gateway.path }}/diagnostics"
+          sudo chmod -R u+rwX,g+rwX "${{ matrix.gateway.path }}/diagnostics"
 
       - name: Run benchmark
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant-latency
@@ -887,6 +907,13 @@ jobs:
         with:
           name: results-${{ matrix.gateway.name }}-constant-latency
           path: ${{ matrix.gateway.path }}/results/
+
+      - name: Inspect diagnostics directory
+        if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
+        run: |
+          echo "Diagnostics directory: ${{ matrix.gateway.path }}/diagnostics"
+          ls -la "${{ matrix.gateway.path }}/diagnostics" || true
+          find "${{ matrix.gateway.path }}/diagnostics" -maxdepth 2 -type f -print | sort || true
 
       - name: Upload diagnostics
         if: ${{ always() && needs.prepare-matrix.outputs.is_diagnostic == 'true' }}
