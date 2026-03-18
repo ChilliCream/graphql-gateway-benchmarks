@@ -36,6 +36,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -317,20 +318,71 @@ jobs:
           fi
 
       - name: Download prebuilt subgraphs
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.gateway.subgraphs_artifact }}
           path: prebuilt-subgraphs/
 
       - name: Restore prebuilt subgraphs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATEWAY_PATH: ${{ matrix.gateway.path }}
+          SUBGRAPHS_DIR: ${{ matrix.gateway.subgraphs }}
+          SUBGRAPHS_ARTIFACT: ${{ matrix.gateway.subgraphs_artifact }}
         run: |
-          SUBGRAPHS_ARCHIVE="$(find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1)"
-          if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
-            echo "Error: prebuilt subgraphs archive not found"
-            find prebuilt-subgraphs -maxdepth 3 -print
+          set -euo pipefail
+
+          find_subgraphs_archive() {
+            find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1
+          }
+
+          redownload_subgraphs_artifact() {
+            rm -rf prebuilt-subgraphs
+            mkdir -p prebuilt-subgraphs
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$SUBGRAPHS_ARTIFACT" --dir prebuilt-subgraphs
+          }
+
+          ATTEMPTS=3
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            SUBGRAPHS_ARCHIVE="$(find_subgraphs_archive)"
+            if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
+              echo "Subgraphs archive not found (attempt $attempt/$ATTEMPTS)"
+            elif tar -tzf "$SUBGRAPHS_ARCHIVE" >/dev/null 2>&1; then
+              tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+              if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
+                chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
+              fi
+              if [[ -f composite-schema/subgraphs-rust/target/release/subgraphs ]]; then
+                chmod +x composite-schema/subgraphs-rust/target/release/subgraphs
+              fi
+              exit 0
+            else
+              echo "Subgraphs archive integrity check failed (attempt $attempt/$ATTEMPTS): $SUBGRAPHS_ARCHIVE"
+              ls -lh "$SUBGRAPHS_ARCHIVE" || true
+            fi
+
+            if [[ "$attempt" -lt "$ATTEMPTS" ]]; then
+              echo "Re-downloading artifact '$SUBGRAPHS_ARTIFACT' for retry..."
+              if ! redownload_subgraphs_artifact; then
+                echo "Artifact re-download failed (attempt $((attempt + 1))/$ATTEMPTS)."
+              fi
+              sleep $((attempt * 5))
+            fi
+          done
+
+          find prebuilt-subgraphs -maxdepth 3 -print || true
+          SUBGRAPHS_ROOT="${GATEWAY_PATH%%/*}"
+          SUBGRAPHS_PATH="${SUBGRAPHS_ROOT}/${SUBGRAPHS_DIR}"
+          echo "Archive restore failed after $ATTEMPTS attempts; falling back to local rebuild: $SUBGRAPHS_PATH"
+          if [[ ! -f "$SUBGRAPHS_PATH/build.sh" ]]; then
+            echo "Error: fallback build script not found: $SUBGRAPHS_PATH/build.sh"
             exit 1
           fi
-          tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+
+          chmod +x "$SUBGRAPHS_PATH/build.sh"
+          (cd "$SUBGRAPHS_PATH" && bash build.sh)
+
           if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
             chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
           fi
@@ -431,20 +483,71 @@ jobs:
           fi
 
       - name: Download prebuilt subgraphs
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.gateway.subgraphs_artifact }}
           path: prebuilt-subgraphs/
 
       - name: Restore prebuilt subgraphs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATEWAY_PATH: ${{ matrix.gateway.path }}
+          SUBGRAPHS_DIR: ${{ matrix.gateway.subgraphs }}
+          SUBGRAPHS_ARTIFACT: ${{ matrix.gateway.subgraphs_artifact }}
         run: |
-          SUBGRAPHS_ARCHIVE="$(find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1)"
-          if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
-            echo "Error: prebuilt subgraphs archive not found"
-            find prebuilt-subgraphs -maxdepth 3 -print
+          set -euo pipefail
+
+          find_subgraphs_archive() {
+            find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1
+          }
+
+          redownload_subgraphs_artifact() {
+            rm -rf prebuilt-subgraphs
+            mkdir -p prebuilt-subgraphs
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$SUBGRAPHS_ARTIFACT" --dir prebuilt-subgraphs
+          }
+
+          ATTEMPTS=3
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            SUBGRAPHS_ARCHIVE="$(find_subgraphs_archive)"
+            if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
+              echo "Subgraphs archive not found (attempt $attempt/$ATTEMPTS)"
+            elif tar -tzf "$SUBGRAPHS_ARCHIVE" >/dev/null 2>&1; then
+              tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+              if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
+                chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
+              fi
+              if [[ -f composite-schema/subgraphs-rust/target/release/subgraphs ]]; then
+                chmod +x composite-schema/subgraphs-rust/target/release/subgraphs
+              fi
+              exit 0
+            else
+              echo "Subgraphs archive integrity check failed (attempt $attempt/$ATTEMPTS): $SUBGRAPHS_ARCHIVE"
+              ls -lh "$SUBGRAPHS_ARCHIVE" || true
+            fi
+
+            if [[ "$attempt" -lt "$ATTEMPTS" ]]; then
+              echo "Re-downloading artifact '$SUBGRAPHS_ARTIFACT' for retry..."
+              if ! redownload_subgraphs_artifact; then
+                echo "Artifact re-download failed (attempt $((attempt + 1))/$ATTEMPTS)."
+              fi
+              sleep $((attempt * 5))
+            fi
+          done
+
+          find prebuilt-subgraphs -maxdepth 3 -print || true
+          SUBGRAPHS_ROOT="${GATEWAY_PATH%%/*}"
+          SUBGRAPHS_PATH="${SUBGRAPHS_ROOT}/${SUBGRAPHS_DIR}"
+          echo "Archive restore failed after $ATTEMPTS attempts; falling back to local rebuild: $SUBGRAPHS_PATH"
+          if [[ ! -f "$SUBGRAPHS_PATH/build.sh" ]]; then
+            echo "Error: fallback build script not found: $SUBGRAPHS_PATH/build.sh"
             exit 1
           fi
-          tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+
+          chmod +x "$SUBGRAPHS_PATH/build.sh"
+          (cd "$SUBGRAPHS_PATH" && bash build.sh)
+
           if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
             chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
           fi
@@ -544,20 +647,77 @@ jobs:
           fi
 
       - name: Download prebuilt subgraphs
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.gateway.subgraphs_artifact }}
           path: prebuilt-subgraphs/
 
       - name: Restore prebuilt subgraphs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATEWAY_PATH: ${{ matrix.gateway.path }}
+          SUBGRAPHS_DIR: ${{ matrix.gateway.subgraphs }}
+          SUBGRAPHS_ARTIFACT: ${{ matrix.gateway.subgraphs_artifact }}
         run: |
-          SUBGRAPHS_ARCHIVE="$(find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1)"
-          if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
-            echo "Error: prebuilt subgraphs archive not found"
-            find prebuilt-subgraphs -maxdepth 3 -print
+          set -euo pipefail
+
+          find_subgraphs_archive() {
+            find prebuilt-subgraphs -type f -name '*.tar.gz' | head -n1
+          }
+
+          redownload_subgraphs_artifact() {
+            rm -rf prebuilt-subgraphs
+            mkdir -p prebuilt-subgraphs
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$SUBGRAPHS_ARTIFACT" --dir prebuilt-subgraphs
+          }
+
+          ATTEMPTS=3
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            SUBGRAPHS_ARCHIVE="$(find_subgraphs_archive)"
+            if [[ -z "$SUBGRAPHS_ARCHIVE" ]]; then
+              echo "Subgraphs archive not found (attempt $attempt/$ATTEMPTS)"
+            elif tar -tzf "$SUBGRAPHS_ARCHIVE" >/dev/null 2>&1; then
+              tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+              if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
+                chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
+              fi
+              if [[ -f composite-schema/subgraphs-rust/target/release/subgraphs ]]; then
+                chmod +x composite-schema/subgraphs-rust/target/release/subgraphs
+              fi
+              exit 0
+            else
+              echo "Subgraphs archive integrity check failed (attempt $attempt/$ATTEMPTS): $SUBGRAPHS_ARCHIVE"
+              ls -lh "$SUBGRAPHS_ARCHIVE" || true
+            fi
+
+            if [[ "$attempt" -lt "$ATTEMPTS" ]]; then
+              echo "Re-downloading artifact '$SUBGRAPHS_ARTIFACT' for retry..."
+              if ! redownload_subgraphs_artifact; then
+                echo "Artifact re-download failed (attempt $((attempt + 1))/$ATTEMPTS)."
+              fi
+              sleep $((attempt * 5))
+            fi
+          done
+
+          find prebuilt-subgraphs -maxdepth 3 -print || true
+          SUBGRAPHS_ROOT="${GATEWAY_PATH%%/*}"
+          SUBGRAPHS_PATH="${SUBGRAPHS_ROOT}/${SUBGRAPHS_DIR}"
+          echo "Archive restore failed after $ATTEMPTS attempts; falling back to local rebuild: $SUBGRAPHS_PATH"
+          if [[ ! -f "$SUBGRAPHS_PATH/build.sh" ]]; then
+            echo "Error: fallback build script not found: $SUBGRAPHS_PATH/build.sh"
             exit 1
           fi
-          tar -xzf "$SUBGRAPHS_ARCHIVE" -C .
+
+          chmod +x "$SUBGRAPHS_PATH/build.sh"
+          (cd "$SUBGRAPHS_PATH" && bash build.sh)
+
+          if [[ -f apollo-federation/subgraphs-rust/target/release/subgraphs ]]; then
+            chmod +x apollo-federation/subgraphs-rust/target/release/subgraphs
+          fi
+          if [[ -f composite-schema/subgraphs-rust/target/release/subgraphs ]]; then
+            chmod +x composite-schema/subgraphs-rust/target/release/subgraphs
+          fi
 
       - name: Kill stale perfrunner processes
         run: |
@@ -601,6 +761,7 @@ jobs:
 
   generate-results-constant:
     needs:
+      - prepare-matrix
       - benchmark-constant
       - generate-results-constant-latency
     if: ${{ always() && !cancelled() }}
@@ -616,24 +777,34 @@ jobs:
           path: artifacts/
 
       - name: Generate constant result document
-        run: python3 k6/generate-results.py artifacts/ .
+        env:
+          EXPECTED_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.gateways }}
+          EXPECTED_GATEWAYS_NET_JSON: ${{ needs.prepare-matrix.outputs.gateways_net }}
+          RESULT_MODES: constant
+        run: python3 k6/generate-results.py artifacts/ benchmark-runs/${{ github.run_number }}
 
       - name: Write constant summary
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          CONSTANT_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT.md"
           echo "# Benchmark Results (Constant)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ -f RESULTS_CONSTANT.md ]]; then
-            cat RESULTS_CONSTANT.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f "$CONSTANT_RESULTS_FILE" ]]; then
+            cat "$CONSTANT_RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
           else
             echo "No constant results were generated." >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Commit constant results
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          CONSTANT_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT.md"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RESULTS_CONSTANT.md
-          git diff --cached --quiet || git commit -m "Update constant benchmark results"
+          if [[ -f "$CONSTANT_RESULTS_FILE" ]]; then
+            git add "$CONSTANT_RESULTS_FILE"
+          fi
+          git diff --cached --quiet || git commit -m "Add constant benchmark results for run #${{ github.run_number }}"
           git push
 
       - name: Upload combined constant results
@@ -645,6 +816,7 @@ jobs:
 
   generate-results-burst:
     needs:
+      - prepare-matrix
       - benchmark-burst
       - generate-results-constant
     if: ${{ !cancelled() }}
@@ -660,24 +832,34 @@ jobs:
           path: artifacts/
 
       - name: Generate burst result document
-        run: python3 k6/generate-results.py artifacts/ .
+        env:
+          EXPECTED_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.gateways }}
+          EXPECTED_GATEWAYS_NET_JSON: ${{ needs.prepare-matrix.outputs.gateways_net }}
+          RESULT_MODES: burst
+        run: python3 k6/generate-results.py artifacts/ benchmark-runs/${{ github.run_number }}
 
       - name: Write burst summary
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          BURST_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_BURST.md"
           echo "# Benchmark Results (Burst)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ -f RESULTS_BURST.md ]]; then
-            cat RESULTS_BURST.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f "$BURST_RESULTS_FILE" ]]; then
+            cat "$BURST_RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
           else
             echo "No burst results were generated." >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Commit burst results
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          BURST_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_BURST.md"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RESULTS_BURST.md
-          git diff --cached --quiet || git commit -m "Update burst benchmark results"
+          if [[ -f "$BURST_RESULTS_FILE" ]]; then
+            git add "$BURST_RESULTS_FILE"
+          fi
+          git diff --cached --quiet || git commit -m "Add burst benchmark results for run #${{ github.run_number }}"
           git push
 
       - name: Upload combined burst results
@@ -689,6 +871,7 @@ jobs:
 
   generate-results-constant-latency:
     needs:
+      - prepare-matrix
       - benchmark-constant-latency
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -703,24 +886,34 @@ jobs:
           path: artifacts/
 
       - name: Generate constant-latency result document
-        run: python3 k6/generate-results.py artifacts/ .
+        env:
+          EXPECTED_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.gateways }}
+          EXPECTED_GATEWAYS_NET_JSON: ${{ needs.prepare-matrix.outputs.gateways_net }}
+          RESULT_MODES: constant-latency
+        run: python3 k6/generate-results.py artifacts/ benchmark-runs/${{ github.run_number }}
 
       - name: Write constant-latency summary
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          CONSTANT_LATENCY_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT_LATENCY.md"
           echo "# Benchmark Results (Constant Latency)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ -f RESULTS_CONSTANT_LATENCY.md ]]; then
-            cat RESULTS_CONSTANT_LATENCY.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f "$CONSTANT_LATENCY_RESULTS_FILE" ]]; then
+            cat "$CONSTANT_LATENCY_RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
           else
             echo "No constant-latency results were generated." >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Commit constant-latency results
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          CONSTANT_LATENCY_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT_LATENCY.md"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RESULTS_CONSTANT_LATENCY.md
-          git diff --cached --quiet || git commit -m "Update constant-latency benchmark results"
+          if [[ -f "$CONSTANT_LATENCY_RESULTS_FILE" ]]; then
+            git add "$CONSTANT_LATENCY_RESULTS_FILE"
+          fi
+          git diff --cached --quiet || git commit -m "Add constant-latency benchmark results for run #${{ github.run_number }}"
           git push
 
       - name: Upload combined constant-latency results
@@ -732,6 +925,9 @@ jobs:
 
   benchmark-summary:
     needs:
+      - benchmark-constant
+      - benchmark-burst
+      - benchmark-constant-latency
       - generate-results-constant
       - generate-results-burst
       - generate-results-constant-latency
@@ -744,6 +940,10 @@ jobs:
 
       - name: Write final benchmark summary
         run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          CONSTANT_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT.md"
+          BURST_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_BURST.md"
+          CONSTANT_LATENCY_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT_LATENCY.md"
           echo "# Benchmark Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Run: **Benchmark #${{ github.run_number }}**" >> $GITHUB_STEP_SUMMARY
@@ -753,24 +953,55 @@ jobs:
           echo "- Duration per run: \`${{ inputs.duration || '120' }}s\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [[ -f RESULTS_CONSTANT.md ]]; then
-            cat RESULTS_CONSTANT.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f "$CONSTANT_RESULTS_FILE" ]]; then
+            cat "$CONSTANT_RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           else
             echo "No constant results were generated." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [[ -f RESULTS_BURST.md ]]; then
-            cat RESULTS_BURST.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f "$BURST_RESULTS_FILE" ]]; then
+            cat "$BURST_RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           else
             echo "No burst results were generated." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [[ -f RESULTS_CONSTANT_LATENCY.md ]]; then
-            cat RESULTS_CONSTANT_LATENCY.md >> $GITHUB_STEP_SUMMARY
+          if [[ -f "$CONSTANT_LATENCY_RESULTS_FILE" ]]; then
+            cat "$CONSTANT_LATENCY_RESULTS_FILE" >> $GITHUB_STEP_SUMMARY
           else
             echo "No constant-latency results were generated." >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Publish latest root results
+        if: ${{ needs.benchmark-constant.result == 'success' && needs.benchmark-burst.result == 'success' && needs.benchmark-constant-latency.result == 'success' && needs.generate-results-constant.result == 'success' && needs.generate-results-burst.result == 'success' && needs.generate-results-constant-latency.result == 'success' }}
+        run: |
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          CONSTANT_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT.md"
+          BURST_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_BURST.md"
+          CONSTANT_LATENCY_RESULTS_FILE="$RUN_RESULTS_DIR/RESULTS_CONSTANT_LATENCY.md"
+
+          for file in "$CONSTANT_RESULTS_FILE" "$BURST_RESULTS_FILE" "$CONSTANT_LATENCY_RESULTS_FILE"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Error: expected run result file is missing: $file"
+              exit 1
+            fi
+          done
+
+          cp "$CONSTANT_RESULTS_FILE" RESULTS_CONSTANT.md
+          cp "$BURST_RESULTS_FILE" RESULTS_BURST.md
+          cp "$CONSTANT_LATENCY_RESULTS_FILE" RESULTS_CONSTANT_LATENCY.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RESULTS_CONSTANT.md RESULTS_BURST.md RESULTS_CONSTANT_LATENCY.md
+          git diff --cached --quiet || git commit -m "Update latest benchmark results from run #${{ github.run_number }}"
+          git push
+
+      - name: Skip latest root publish (errors detected)
+        if: ${{ needs.benchmark-constant.result != 'success' || needs.benchmark-burst.result != 'success' || needs.benchmark-constant-latency.result != 'success' || needs.generate-results-constant.result != 'success' || needs.generate-results-burst.result != 'success' || needs.generate-results-constant-latency.result != 'success' }}
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Latest root files were not updated because one or more benchmark jobs failed." >> $GITHUB_STEP_SUMMARY
