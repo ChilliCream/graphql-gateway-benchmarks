@@ -61,6 +61,7 @@ jobs:
       gateways: ${{ steps.build.outputs.gateways }}
       gateways_net: ${{ steps.build.outputs.gateways_net }}
       gateway_builds: ${{ steps.build.outputs.gateway_builds }}
+      subgraph_builds: ${{ steps.build.outputs.subgraph_builds }}
       is_diagnostic: ${{ steps.flags.outputs.is_diagnostic }}
       should_publish: ${{ steps.flags.outputs.should_publish }}
       run_constant: ${{ steps.flags.outputs.run_constant }}
@@ -249,30 +250,40 @@ jobs:
               }
           build_matrix_json = json.dumps(list(builds_by_artifact.values()), separators=(",", ":"))
 
+          subgraphs_by_artifact = {}
+          for entry in chosen:
+              artifact = entry["subgraphs_artifact"]
+              if artifact in subgraphs_by_artifact:
+                  continue
+              category = entry["path"].split("/", 1)[0]
+              subgraphs_by_artifact[artifact] = {
+                  "path": f"{category}/{entry['subgraphs']}",
+                  "artifact": artifact,
+              }
+          subgraph_matrix_json = json.dumps(list(subgraphs_by_artifact.values()), separators=(",", ":"))
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"gateways={matrix_json}\n")
               fh.write(f"gateways_net={matrix_net_json}\n")
               fh.write(f"gateway_builds={build_matrix_json}\n")
+              fh.write(f"subgraph_builds={subgraph_matrix_json}\n")
 
           print("Selected gateway entries:")
           for entry in chosen:
               print(f" - {entry['base_name']} [{entry['subgraph_tech']}]")
+
+          print("Subgraph builds:")
+          for sub in subgraphs_by_artifact.values():
+              print(f" - {sub['path']} ({sub['artifact']})")
           PY
 
   build-subgraphs:
+    needs: prepare-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        subgraphs:
-          - path: apollo-federation/subgraphs-rust
-            artifact: prebuilt-apollo-federation-subgraphs-rust
-          - path: apollo-federation/subgraphs-net
-            artifact: prebuilt-apollo-federation-subgraphs-net
-          - path: composite-schema/subgraphs-net
-            artifact: prebuilt-composite-schema-subgraphs-net
-          - path: composite-schema/subgraphs-rust
-            artifact: prebuilt-composite-schema-subgraphs-rust
+        subgraphs: ${{ fromJson(needs.prepare-matrix.outputs.subgraph_builds) }}
     name: build-${{ matrix.subgraphs.path }}
     steps:
       - uses: actions/checkout@v4
@@ -334,6 +345,7 @@ jobs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
+      - benchmark-constant-latency
     if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.run_constant == 'true' }}
     strategy:
       fail-fast: false
@@ -519,6 +531,7 @@ jobs:
       - prepare-matrix
       - build-subgraphs
       - build-gateways
+      - benchmark-constant
     if: ${{ always() && !cancelled() && needs.prepare-matrix.outputs.run_burst == 'true' }}
     strategy:
       fail-fast: false
