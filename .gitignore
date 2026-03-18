@@ -11,6 +11,8 @@ Thumbs.db
 ## Benchmark artifacts
 gateway_log.txt
 error.log
+**/fusion-diagnostics.log
+**/diagnostics/run-info.txt
 data.csv
 version.txt
 
