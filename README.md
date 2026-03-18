@@ -2,7 +2,7 @@
 
 Performance benchmarks comparing GraphQL gateway implementations across federation and composite schema approaches.
 
-**Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Burst Load](./RESULTS_BURST.md) | [Constant Load with Latency](./RESULTS_CONSTANT_LATENCY.md)
+**Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Constant Load with Latency](./RESULTS_CONSTANT_LATENCY.md) | [Burst Load](./RESULTS_BURST.md)
 
 ## Test categories
 
