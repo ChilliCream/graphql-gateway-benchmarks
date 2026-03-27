@@ -1,8 +1,14 @@
 using eShop.Gateway.BenchmarkDiagnostics;
 
-ThreadPool.SetMinThreads(256, 256);
+ThreadPool.SetMinThreads(512, 512);
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MinResponseDataRate = null;
+    options.Limits.MinRequestBodyDataRate = null;
+});
 
 if (Environment.GetEnvironmentVariable("BENCH_DIAGNOSTIC_RUN") == "1")
 {
@@ -21,7 +27,8 @@ builder.Services
     .ConfigurePrimaryHttpMessageHandler(
         () => new SocketsHttpHandler
         {
-            MaxConnectionsPerServer = 256
+            MaxConnectionsPerServer = 512,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
         })
     .AddHeaderPropagation();
 

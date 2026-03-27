@@ -953,6 +953,7 @@ json.dump({
     -e "BENCH_OVER_TIME=${MEASURE_SECONDS}s"
     -e "GATEWAY_ENDPOINT=$GRAPHQL_URL"
     -e "SUMMARY_PATH=$RESULT_DIR"
+    -e "PRINT_ONCE=1"
   )
 
   if [[ -n "${BENCH_VUS:-}" ]]; then

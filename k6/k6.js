@@ -196,7 +196,7 @@ function makeGraphQLRequest() {
         printOnce(
           "graphql_errors",
           `‼️ Got GraphQL errors, here's a sample:`,
-          res.json.errors
+          res.json().errors
         );
       }
 
