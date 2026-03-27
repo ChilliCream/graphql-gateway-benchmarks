@@ -70,28 +70,6 @@ internal sealed class FusionErrorDiagnostics : FusionExecutionDiagnosticEventLis
             $"StackTrace={Quote(error.StackTrace)}");
     }
 
-    public override void SourceSchemaResultError(
-        OperationPlanContext context,
-        ExecutionNode node,
-        string schemaName,
-        IReadOnlyList<IError> errors)
-    {
-        foreach (var error in errors)
-        {
-            var inner = error.Exception;
-            WriteLine(
-                $"SourceSchemaResultError: " +
-                $"Schema={Quote(schemaName)}, " +
-                $"NodeType={node.GetType().Name}, " +
-                $"Code={Quote(error.Code)}, " +
-                $"Message={Quote(error.Message)}, " +
-                $"Path={Quote(error.Path?.ToString())}" +
-                (inner is not null
-                    ? $", Exception={Quote(inner.GetType().FullName)}, ExceptionMessage={Quote(inner.Message)}"
-                    : ""));
-        }
-    }
-
     public override void PlanOperationError(
         RequestContext context,
         string operationId,
