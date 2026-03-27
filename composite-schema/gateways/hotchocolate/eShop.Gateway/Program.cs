@@ -10,9 +10,12 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MinRequestBodyDataRate = null;
 });
 
-if (Environment.GetEnvironmentVariable("BENCH_DIAGNOSTIC_RUN") == "1")
+var isDiagnosticRun = Environment.GetEnvironmentVariable("BENCH_DIAGNOSTIC_RUN") == "1";
+
+if (isDiagnosticRun)
 {
     builder.Services.AddHostedService<FusionPoolDiagnostics>();
+    builder.Services.AddHostedService<FirstChanceExceptionLogger>();
 }
 
 builder.Services
@@ -32,9 +35,14 @@ builder.Services
         })
     .AddHeaderPropagation();
 
-builder
+var gatewayBuilder = builder
     .AddGraphQLGateway()
     .AddFileSystemConfiguration("./gateway.far");
+
+if (isDiagnosticRun)
+{
+    gatewayBuilder.AddDiagnosticEventListener<FusionErrorDiagnostics>();
+}
 
 var app = builder.Build();
 
