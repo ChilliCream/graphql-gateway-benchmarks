@@ -67,6 +67,29 @@ if (isDiagnosticRun)
 
 var app = builder.Build();
 
+// --- Admission control ---                          
+var maxConcurrency = int.TryParse(
+    Environment.GetEnvironmentVariable("BENCH_MAX_CONCURRENCY"),
+    out var mc) ? mc : 64;
+var gate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+var concurrentRequests = 0;
+
+app.Use(async (context, next) =>
+{
+    await gate.WaitAsync(context.RequestAborted);
+    Interlocked.Increment(ref concurrentRequests);
+    try
+    {
+        await next();
+    }
+    finally
+    {
+        Interlocked.Decrement(ref concurrentRequests);
+        gate.Release();
+    }
+});
+// --- End admission control ---
+
 app.UseHeaderPropagation();
 app.MapGraphQLHttp();
 
