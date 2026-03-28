@@ -1,4 +1,6 @@
 using eShop.Gateway.BenchmarkDiagnostics;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
 
 ThreadPool.SetMinThreads(512, 512);
 
@@ -18,6 +20,8 @@ if (isDiagnosticRun)
     builder.Services.AddHostedService<FirstChanceExceptionLogger>();
 }
 
+builder.Services.AddRequestTimeouts();
+
 builder.Services
     .AddHeaderPropagation(
         options =>
@@ -33,11 +37,28 @@ builder.Services
             MaxConnectionsPerServer = 512,
             PooledConnectionLifetime = TimeSpan.FromMinutes(2)
         })
-    .AddHeaderPropagation();
+    .AddHeaderPropagation()
+    .AddResilienceHandler("fusion-retry", pipeline =>
+    {
+        pipeline.AddRetry(new HttpRetryStrategyOptions
+        {
+            MaxRetryAttempts = 3,
+            BackoffType = DelayBackoffType.Exponential,
+            Delay = TimeSpan.FromMilliseconds(50),
+            UseJitter = true,
+            ShouldHandle = args => ValueTask.FromResult(
+                args.Outcome.Result?.IsSuccessStatusCode == false
+                || args.Outcome.Exception is not null)
+        });
+    });
 
 var gatewayBuilder = builder
     .AddGraphQLGateway()
-    .AddFileSystemConfiguration("./gateway.far");
+    .AddFileSystemConfiguration("./gateway.far")
+    .ModifyRequestOptions(options =>
+    {
+        options.ExecutionTimeout = TimeSpan.FromMinutes(1);
+    });
 
 if (isDiagnosticRun)
 {
