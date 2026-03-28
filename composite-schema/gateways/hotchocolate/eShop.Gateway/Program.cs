@@ -31,6 +31,26 @@ builder
 
 var app = builder.Build();
 
+// --- Admission control ---                          
+const int maxConcurrency = 64;
+var gate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+app.Use(async (context, next) =>
+{
+    await gate.WaitAsync(context.RequestAborted);
+
+    try
+    {
+        await next(context);
+    }
+    finally
+    {
+        gate.Release();
+    }
+});
+// --- End admission control ---
+
+
 app.UseHeaderPropagation();
 app.MapGraphQLHttp();
 
