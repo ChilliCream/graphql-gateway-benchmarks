@@ -1,0 +1,10 @@
+port: 5220
+admin-port: 9091
+admin-address: 127.0.0.1
+management-port: 9090
+management-address: 127.0.0.1
+enable-introspection: false
+max-request-size-bytes: 2097152
+
+logging:
+  dir: ./logs

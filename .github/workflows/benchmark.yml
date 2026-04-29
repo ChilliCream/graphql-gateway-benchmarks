@@ -22,6 +22,7 @@ on:
           - hive-gateway-router-runtime
           - hive-router
           - hotchocolate
+          - feddi-gateway
       benchmark:
         description: 'Benchmark mode'
         required: false
@@ -175,6 +176,11 @@ jobs:
                   "path": "composite-schema/gateways/hotchocolate",
                   "name": "hotchocolate",
                   "gateway_artifact": "prebuilt-gateway-hotchocolate",
+              },
+              {
+                  "path": "composite-schema/gateways/feddi-gateway",
+                  "name": "feddi-gateway",
+                  "gateway_artifact": "prebuilt-gateway-feddi-gateway",
               },
           ]
 
@@ -387,6 +393,9 @@ jobs:
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
           fi
+          if [[ -f composite-schema/gateways/feddi-gateway/feddi-gateway/bin/feddi-gateway ]]; then
+            chmod +x composite-schema/gateways/feddi-gateway/feddi-gateway/bin/feddi-gateway
+          fi
 
       - name: Download prebuilt subgraphs
         continue-on-error: true
@@ -583,6 +592,9 @@ jobs:
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
           fi
+          if [[ -f composite-schema/gateways/feddi-gateway/feddi-gateway/bin/feddi-gateway ]]; then
+            chmod +x composite-schema/gateways/feddi-gateway/feddi-gateway/bin/feddi-gateway
+          fi
 
       - name: Download prebuilt subgraphs
         continue-on-error: true
@@ -777,6 +789,9 @@ jobs:
           fi
           if [[ -f apollo-federation/gateways/hive-router/hive_router ]]; then
             chmod +x apollo-federation/gateways/hive-router/hive_router
+          fi
+          if [[ -f composite-schema/gateways/feddi-gateway/feddi-gateway/bin/feddi-gateway ]]; then
+            chmod +x composite-schema/gateways/feddi-gateway/feddi-gateway/bin/feddi-gateway
           fi
 
       - name: Download prebuilt subgraphs
