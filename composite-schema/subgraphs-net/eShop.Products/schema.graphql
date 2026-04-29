@@ -3,7 +3,7 @@ schema {
 }
 
 type Product {
-  upc: String!
+  upc: String! @shareable
   name: String!
   price: Long!
   weight: Long!
@@ -31,6 +31,8 @@ a stable key.
 directive @lookup on FIELD_DEFINITION
 
 directive @serializeAs("The primitive type a scalar is serialized to." type: [ScalarSerializationType!]! "The ECMA-262 regex pattern that the serialized scalar value conforms to." pattern: String) on SCALAR
+
+directive @shareable repeatable on OBJECT | FIELD_DEFINITION
 
 "The `@specifiedBy` directive is used within the type system definition language to provide a URL for specifying the behavior of custom scalar definitions."
 directive @specifiedBy("The specifiedBy URL points to a human-readable specification. This field will only read a result for scalar types." url: String!) on SCALAR

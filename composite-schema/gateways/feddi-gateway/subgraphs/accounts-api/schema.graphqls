@@ -22,4 +22,4 @@ a stable key.
 """
 directive @lookup on FIELD_DEFINITION
 
-directive @shareable on OBJECT | FIELD_DEFINITION
+directive @shareable repeatable on OBJECT | FIELD_DEFINITION

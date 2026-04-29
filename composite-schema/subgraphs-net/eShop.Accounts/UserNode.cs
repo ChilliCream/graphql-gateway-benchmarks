@@ -1,5 +1,6 @@
 using HotChocolate;
 using HotChocolate.Types;
+using HotChocolate.Types.Composite;
 using HotChocolate.Types.Relay;
 
 namespace eShop.Accounts;
@@ -8,5 +9,6 @@ namespace eShop.Accounts;
 public static partial class UserNode
 {
     [ID]
+    [Shareable]
     public static string GetId([Parent] User user) => user.Id;
 }
