@@ -51,7 +51,8 @@ done
 # --- Upload subgraph configuration ---
 echo "Uploading subgraph schemas to feddi-gateway..."
 UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:9091/admin/upload" \
-  -F "file=@$SCRIPT_DIR/subgraphs.zip")
+  -H "Content-Type: application/zip" \
+  --data-binary "@$SCRIPT_DIR/subgraphs.zip")
 HTTP_CODE=$(echo "$UPLOAD_RESPONSE" | tail -1)
 
 if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
