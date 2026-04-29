@@ -70,7 +70,8 @@ fi
 
 # --- Build subgraphs.zip for admin upload ---
 echo "Building subgraphs configuration archive..."
-(cd "$SCRIPT_DIR/subgraphs" && zip -q -r "$SCRIPT_DIR/subgraphs.zip" .)
+rm -f "$SCRIPT_DIR/subgraphs.zip"
+(cd "$SCRIPT_DIR" && zip -q -r "$SCRIPT_DIR/subgraphs.zip" subgraphs)
 
 # --- Fetch feddi-gateway version ---
 FEDDI_VERSION="unknown"
