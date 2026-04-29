@@ -3,7 +3,7 @@ schema {
 }
 
 type Product {
-  upc: String!
+  upc: String! @shareable
   name: String!
   price: Long!
   weight: Long!
@@ -36,6 +36,8 @@ that can be used by the distributed GraphQL executor to resolve an entity by
 a stable key.
 """
 directive @lookup on FIELD_DEFINITION
+
+directive @shareable on OBJECT | FIELD_DEFINITION
 
 directive @serializeAs("The primitive type a scalar is serialized to." type: [ScalarSerializationType!]! "The ECMA-262 regex pattern that the serialized scalar value conforms to." pattern: String) on SCALAR
 

@@ -4,7 +4,7 @@ schema {
 
 type Product {
   shippingEstimate(weight: Long! @require(field: "weight") price: Long! @require(field: "price")): Long!
-  upc: String!
+  upc: String! @shareable
   inStock: Boolean!
 }
 
@@ -44,6 +44,8 @@ that can be used by the distributed GraphQL executor to resolve an entity by
 a stable key.
 """
 directive @lookup on FIELD_DEFINITION
+
+directive @shareable on OBJECT | FIELD_DEFINITION
 
 """
 The @require directive is used to express data requirements with other source schemas.
