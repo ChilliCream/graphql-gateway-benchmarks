@@ -5,13 +5,17 @@ set -Eeuo pipefail
 # benchmark.sh — Full benchmark orchestrator
 #
 # Usage:
-#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping]
+#   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping] [conditions]
 #
 # Examples:
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
 #   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust burst
 #   ./k6/benchmark.sh apollo-federation/gateways/cosmo burst
+#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-net burst conditions
+#
+#   "conditions" selects the skip/include permutation benchmark (k6-conditions.js)
+#   and writes results under <gateway>/results-conditions.
 #
 # Environment variables:
 #   MEASURE_SECONDS  Benchmark measurement duration (default: 120)
@@ -36,8 +40,9 @@ GATEWAY_REL="$1"
 SUBGRAPHS_OVERRIDE=""
 LOAD_MODE="constant"
 LOAD_MODE_LABEL="constant"
+QUERY_TYPE="default"
 
-# Parse remaining args: auto-detect mode vs subgraphs override
+# Parse remaining args: auto-detect mode vs query-type vs subgraphs override
 SIMULATE_LATENCY=false
 for arg in "${@:2}"; do
   case "$arg" in
@@ -55,6 +60,10 @@ for arg in "${@:2}"; do
       # Keep "ramping" internal for existing profiles.json + k6 mode compatibility.
       LOAD_MODE="ramping"
       LOAD_MODE_LABEL="burst"
+      ;;
+    conditions)
+      # Skip/include permutation benchmark (k6-conditions.js).
+      QUERY_TYPE="conditions"
       ;;
     *)
       SUBGRAPHS_OVERRIDE="$arg"
@@ -113,6 +122,13 @@ elif [[ "$CATEGORY" == "composite-schema" ]]; then
   SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/subgraphs-net"
 else
   SUBGRAPHS_DIR="$REPO_ROOT/$CATEGORY/subgraphs"
+fi
+
+# k6 driver script: the skip/include permutation benchmark uses its own script.
+if [[ "$QUERY_TYPE" == "conditions" ]]; then
+  K6_SCRIPT="$REPO_ROOT/k6/k6-conditions.js"
+else
+  K6_SCRIPT="$REPO_ROOT/k6/k6.js"
 fi
 
 for dir in "$GATEWAY_DIR" "$SUBGRAPHS_DIR"; do
@@ -854,7 +870,11 @@ else
   DISPLAY_NAME="$GATEWAY_NAME ($SUBGRAPH_TECH subgraphs)"
 fi
 K6_API_ADDR="127.0.0.1:6565"
-RESULTS_BASE="$GATEWAY_DIR/results"
+if [[ "$QUERY_TYPE" == "conditions" ]]; then
+  RESULTS_BASE="$GATEWAY_DIR/results-conditions"
+else
+  RESULTS_BASE="$GATEWAY_DIR/results"
+fi
 
 # Read gateway version if available
 GATEWAY_VERSION=""
@@ -885,7 +905,7 @@ fi
 
 maybe_taskset "$K6_CPUSET" k6 run \
   "${K6_WARMUP_ARGS[@]}" \
-  "$REPO_ROOT/k6/k6.js" >/dev/null 2>&1 || true
+  "$K6_SCRIPT" >/dev/null 2>&1 || true
 
 echo "# Complete ${MEASURE_SECONDS}s warmup                                               #"
 echo "######################################################################"
@@ -923,9 +943,10 @@ json.dump({
     'machine_os': sys.argv[14],
     'machine_cpu': sys.argv[15],
     'machine_cores': sys.argv[16],
-    'machine_ram': sys.argv[17]
+    'machine_ram': sys.argv[17],
+    'query_type': sys.argv[18]
 }, open(sys.argv[8], 'w'), indent=2)
-" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE_LABEL" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION" "$SUBGRAPH_VARIANT" "$SUBGRAPH_TECH" "$MACHINE_HOSTNAME" "$MACHINE_OS" "$MACHINE_CPU" "$MACHINE_CORES" "$MACHINE_RAM"
+" "$GATEWAY_NAME" "$GATEWAY_REL" "$CATEGORY" "$LOAD_MODE_LABEL" "$TIMESTAMP" "$RUN" "$BENCH_RUNS" "$RESULT_DIR/metadata.json" "$DISPLAY_NAME" "$GATEWAY_VERSION" "$SUBGRAPH_VARIANT" "$SUBGRAPH_TECH" "$MACHINE_HOSTNAME" "$MACHINE_OS" "$MACHINE_CPU" "$MACHINE_CORES" "$MACHINE_RAM" "$QUERY_TYPE"
 
   echo "Results for run $RUN: $RESULT_DIR"
 
@@ -962,7 +983,7 @@ json.dump({
   maybe_taskset "$K6_CPUSET" k6 run \
     --address "$K6_API_ADDR" \
     "${K6_ENV_ARGS[@]}" \
-    "$REPO_ROOT/k6/k6.js"
+    "$K6_SCRIPT"
 
   # ---- Stop monitor for this run ---------------------------------------------
 
@@ -1004,7 +1025,7 @@ done
 echo ""
 echo "======================================================================="
 echo "All $BENCH_RUNS measured runs complete (plus 1 warmup, discarded)."
-echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE_LABEL | Duration: ${MEASURE_SECONDS}s"
+echo "Gateway: $GATEWAY_NAME | Mode: $LOAD_MODE_LABEL | Query: $QUERY_TYPE | Duration: ${MEASURE_SECONDS}s"
 echo "Results: $RESULTS_BASE/"
 echo "======================================================================="
 
