@@ -10,7 +10,7 @@
     "typescript": "5.9.3",
     "graphql": "16.13.2",
     "express": "4.22.1",
-    "@apollo/server": "5.5.0",
-    "@apollo/gateway": "2.13.3"
+    "@apollo/server": "5.5.1",
+    "@apollo/gateway": "2.14.1"
   }
 }
