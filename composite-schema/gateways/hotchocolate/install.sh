@@ -21,23 +21,23 @@ else
   export PATH="$HOME/.dotnet:$PATH"
 fi
 
-# --- Fetch latest HotChocolate preview version from NuGet ---
-echo "Fetching latest HotChocolate preview version from NuGet..."
-LATEST_PREVIEW=$(curl -s "https://api.nuget.org/v3-flatcontainer/hotchocolate.aspnetcore/index.json" \
-  | python3 -c "import json,sys; vs=json.load(sys.stdin)['versions']; previews=[v for v in vs if '-' in v]; print(previews[-1] if previews else '')")
+# --- Fetch latest stable HotChocolate version from NuGet ---
+echo "Fetching latest stable HotChocolate version from NuGet..."
+LATEST_STABLE=$(curl -s "https://api.nuget.org/v3-flatcontainer/hotchocolate.aspnetcore/index.json" \
+  | python3 -c "import json,sys; vs=json.load(sys.stdin)['versions']; stable=[v for v in vs if '-' not in v]; print(max(stable, key=lambda v: [int(p) for p in v.split('.')]) if stable else '')")
 
-if [[ -z "$LATEST_PREVIEW" ]]; then
-  echo "ERROR: Could not determine latest HotChocolate preview version"
+if [[ -z "$LATEST_STABLE" ]]; then
+  echo "ERROR: Could not determine latest stable HotChocolate version"
   exit 1
 fi
 
-echo "Latest HotChocolate preview version: $LATEST_PREVIEW"
+echo "Latest stable HotChocolate version: $LATEST_STABLE"
 
 # --- Update HotChocolate package versions in gateway .csproj ---
-echo "Updating HotChocolate* package references to $LATEST_PREVIEW..."
+echo "Updating HotChocolate* package references to $LATEST_STABLE..."
 for csproj in "$SCRIPT_DIR"/*/*.csproj; do
   if [ -f "$csproj" ] && grep -q 'Include="HotChocolate' "$csproj"; then
-    sed -i.bak -E 's/(Include="HotChocolate[^"]*" Version=")[^"]+(")/\1'"$LATEST_PREVIEW"'\2/g' "$csproj"
+    sed -i.bak -E 's/(Include="HotChocolate[^"]*" Version=")[^"]+(")/\1'"$LATEST_STABLE"'\2/g' "$csproj"
     rm -f "$csproj.bak"
     echo "  Updated: $(basename "$(dirname "$csproj")")/$(basename "$csproj")"
   fi
@@ -47,5 +47,5 @@ done
 echo "Building HotChocolate gateway..."
 cd "$SCRIPT_DIR/eShop.Gateway" && dotnet build -c Release --nologo -v quiet
 
-echo "$LATEST_PREVIEW" > "$SCRIPT_DIR/version.txt"
-echo "HotChocolate gateway build complete (version: $LATEST_PREVIEW)."
+echo "$LATEST_STABLE" > "$SCRIPT_DIR/version.txt"
+echo "HotChocolate gateway build complete (version: $LATEST_STABLE)."
