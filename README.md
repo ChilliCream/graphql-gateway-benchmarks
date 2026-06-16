@@ -36,7 +36,7 @@ Both benchmark families support both subgraph variants:
 - [Hive Router](./apollo-federation/gateways/hive-router) (Rust)
 
 ### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
-- [HotChocolate](./composite-schema/gateways/hotchocolate) (.NET)
+- [Fusion](./composite-schema/gateways/fusion) (.NET) — benchmarked as latest stable (`fusion`), plus latest preview (`fusion-nightly`) when a preview newer than the latest stable exists
 
 ## Running benchmarks locally
 
@@ -59,10 +59,10 @@ Examples:
 
 ```bash
 # composite-schema + .NET subgraphs (default)
-./k6/benchmark.sh composite-schema/gateways/hotchocolate
+./k6/benchmark.sh composite-schema/gateways/fusion
 
 # composite-schema + Rust subgraphs
-./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
+./k6/benchmark.sh composite-schema/gateways/fusion subgraphs-rust
 
 # apollo-federation + .NET subgraphs
 ./k6/benchmark.sh apollo-federation/gateways/apollo-router subgraphs-net
@@ -95,6 +95,8 @@ Environment variables:
 | `BENCH_RUNS` | `9` | Measured runs (plus one warmup run) |
 | `BENCH_VUS` | `50` constant / `500` burst | VU target passed to `k6/k6.js` |
 | `BENCH_DISPLAY_NAME` | _(auto)_ | Override report display name |
+| `BENCH_GATEWAY_NAME` | _(auto)_ | Override gateway identity in result metadata (used to split stable vs preview rows) |
+| `BENCH_GATEWAY_CHANNEL` | `stable` | Gateway package channel for `fusion`'s `install.sh` (`stable` / `preview`) |
 | `BENCH_SUBGRAPH_TECH` | _(auto)_ | Explicit subgraph tech label (`rust` / `.net`) |
 | `USE_PREBUILT_SUBGRAPHS` | `0` | Skip `build.sh` and expect prebuilt subgraph artifact |
 | `USE_PREBUILT_GATEWAY` | `0` | Skip `install.sh` and expect prebuilt gateway artifact |

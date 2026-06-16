@@ -21,7 +21,8 @@ on:
           - hive-gateway
           - hive-gateway-router-runtime
           - hive-router
-          - hotchocolate
+          - fusion
+          - fusion-nightly
       benchmark:
         description: 'Benchmark mode'
         required: false
@@ -117,12 +118,79 @@ jobs:
           import json
           import os
           import sys
+          import urllib.request
+
+
+          def _parse_core(core):
+              nums = []
+              for part in core.split("."):
+                  if not part.isdigit():
+                      return None
+                  nums.append(int(part))
+              return tuple(nums)
+
+
+          def _prerelease_key(pre):
+              # SemVer 2.0: numeric identifiers rank below alphanumeric and compare numerically.
+              key = []
+              for ident in pre.split("."):
+                  if ident.isdigit():
+                      key.append((0, int(ident), ""))
+                  else:
+                      key.append((1, 0, ident))
+              return tuple(key)
+
+
+          def resolve_hotchocolate_channels(versions):
+              # Return (preview_ahead, latest_stable, latest_preview). preview_ahead is
+              # True only when the newest prerelease is on a higher core (X.Y.Z) line than
+              # the newest stable release (an in-flight preview ahead of what has shipped).
+              stable = []
+              preview = []
+              for raw in versions:
+                  core, sep, pre = raw.partition("-")
+                  core_tuple = _parse_core(core)
+                  if core_tuple is None:
+                      continue
+                  if sep:
+                      preview.append((core_tuple, _prerelease_key(pre), raw))
+                  else:
+                      stable.append((core_tuple, raw))
+              latest_stable = max(stable, key=lambda x: x[0]) if stable else None
+              latest_preview = max(preview, key=lambda x: (x[0], x[1])) if preview else None
+              stable_str = latest_stable[1] if latest_stable else None
+              preview_str = latest_preview[2] if latest_preview else None
+              if latest_preview is None:
+                  ahead = False
+              elif latest_stable is None:
+                  ahead = True
+              else:
+                  ahead = latest_preview[0] > latest_stable[0]
+              return ahead, stable_str, preview_str
+
+
+          def hotchocolate_preview_is_ahead():
+              # Query NuGet for the HotChocolate version feed. On any failure return
+              # (False, None, None) so fusion-nightly is skipped unless explicitly asked for.
+              url = "https://api.nuget.org/v3-flatcontainer/hotchocolate.aspnetcore/index.json"
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as resp:
+                      versions = json.load(resp).get("versions", [])
+                  return resolve_hotchocolate_channels(versions)
+              except Exception as exc:  # noqa: BLE001
+                  print(
+                      f"Warning: could not query NuGet for HotChocolate preview status ({exc}); "
+                      "fusion-nightly will be skipped unless explicitly selected."
+                  )
+                  return False, None, None
+
 
           selected = os.environ.get("SELECTED_GATEWAY", "all")
           aliases = {
-              "hc": "hotchocolate",
-              "hc-rust": "hotchocolate-rust",
-              "hc-net": "hotchocolate-net",
+              "hc": "fusion",
+              "hc-rust": "fusion-rust",
+              "hc-net": "fusion-net",
+              "hotchocolate": "fusion",
           }
           selected = aliases.get(selected, selected)
 
@@ -172,9 +240,16 @@ jobs:
                   "gateway_artifact": "prebuilt-gateway-hive-router",
               },
               {
-                  "path": "composite-schema/gateways/hotchocolate",
-                  "name": "hotchocolate",
-                  "gateway_artifact": "prebuilt-gateway-hotchocolate",
+                  "path": "composite-schema/gateways/fusion",
+                  "name": "fusion",
+                  "gateway_artifact": "prebuilt-gateway-fusion",
+                  "channel": "stable",
+              },
+              {
+                  "path": "composite-schema/gateways/fusion",
+                  "name": "fusion-nightly",
+                  "gateway_artifact": "prebuilt-gateway-fusion-nightly",
+                  "channel": "preview",
               },
           ]
 
@@ -218,6 +293,7 @@ jobs:
                       "path": gateway["path"],
                       "name": f"{gateway['name']}-{variant['suffix']}",
                       "base_name": gateway["name"],
+                      "channel": gateway.get("channel", "stable"),
                       "subgraphs": variant["dir"],
                       "subgraph_tech": variant["tech"],
                       "display_name": f"{gateway['name']} ({variant['tech']} subgraphs)",
@@ -231,6 +307,27 @@ jobs:
               chosen = [entry for entry in gateways if entry["base_name"] == selected_gateway]
               if selected_subgraph_tech:
                   chosen = [entry for entry in chosen if entry["subgraph_tech"] == selected_subgraph_tech]
+
+          # Skip the fusion-nightly (preview) variant unless a HotChocolate prerelease
+          # newer than the latest stable exists — otherwise "nightly" would benchmark a
+          # build older than (or equal to) the stable run. An explicit fusion-nightly
+          # selection is always honored.
+          nightly_in_chosen = any(e["base_name"] == "fusion-nightly" for e in chosen)
+          nightly_explicit = selected_gateway == "fusion-nightly"
+          if nightly_in_chosen and not nightly_explicit:
+              preview_ahead, latest_stable_str, latest_preview_str = hotchocolate_preview_is_ahead()
+              if preview_ahead:
+                  print(
+                      f"Including fusion-nightly: preview {latest_preview_str} is ahead of "
+                      f"stable {latest_stable_str}."
+                  )
+              else:
+                  chosen = [e for e in chosen if e["base_name"] != "fusion-nightly"]
+                  print(
+                      f"Skipping fusion-nightly: newest prerelease "
+                      f"({latest_preview_str or 'none'}) is not ahead of latest stable "
+                      f"({latest_stable_str or 'none'})."
+                  )
 
           if not chosen:
               print(f"Error: no gateway entries match selection {selected!r}", file=sys.stderr)
@@ -247,6 +344,7 @@ jobs:
               builds_by_artifact[artifact] = {
                   "path": entry["path"],
                   "artifact": artifact,
+                  "channel": entry["channel"],
               }
           build_matrix_json = json.dumps(list(builds_by_artifact.values()), separators=(",", ":"))
 
@@ -325,6 +423,8 @@ jobs:
           global-json-file: global.json
 
       - name: Build gateway
+        env:
+          BENCH_GATEWAY_CHANNEL: ${{ matrix.gateway.channel || 'stable' }}
         run: |
           chmod +x "${{ matrix.gateway.path }}/install.sh"
           (cd "${{ matrix.gateway.path }}" && bash install.sh)
@@ -495,6 +595,7 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          BENCH_GATEWAY_NAME: ${{ matrix.gateway.base_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
           BENCH_DIAGNOSTIC_RUN: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' && '1' || '0' }}
           BENCH_DIAGNOSTICS_DIR: ${{ github.workspace }}/${{ matrix.gateway.path }}/diagnostics
@@ -691,6 +792,7 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          BENCH_GATEWAY_NAME: ${{ matrix.gateway.base_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
           BENCH_DIAGNOSTIC_RUN: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' && '1' || '0' }}
           BENCH_DIAGNOSTICS_DIR: ${{ github.workspace }}/${{ matrix.gateway.path }}/diagnostics
@@ -882,6 +984,7 @@ jobs:
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} constant-latency
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
+          BENCH_GATEWAY_NAME: ${{ matrix.gateway.base_name || '' }}
           BENCH_SUBGRAPH_TECH: ${{ matrix.gateway.subgraph_tech || '' }}
           BENCH_DIAGNOSTIC_RUN: ${{ needs.prepare-matrix.outputs.is_diagnostic == 'true' && '1' || '0' }}
           BENCH_DIAGNOSTICS_DIR: ${{ github.workspace }}/${{ matrix.gateway.path }}/diagnostics

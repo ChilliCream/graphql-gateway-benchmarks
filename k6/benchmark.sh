@@ -8,15 +8,17 @@ set -Eeuo pipefail
 #   ./k6/benchmark.sh <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping]
 #
 # Examples:
-#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate
-#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust
-#   ./k6/benchmark.sh composite-schema/gateways/hotchocolate subgraphs-rust burst
+#   ./k6/benchmark.sh composite-schema/gateways/fusion
+#   ./k6/benchmark.sh composite-schema/gateways/fusion subgraphs-rust
+#   ./k6/benchmark.sh composite-schema/gateways/fusion subgraphs-rust burst
 #   ./k6/benchmark.sh apollo-federation/gateways/cosmo burst
 #
 # Environment variables:
 #   MEASURE_SECONDS  Benchmark measurement duration (default: 120)
 #   BENCH_VUS        Virtual users (passed through to k6.js)
 #   BENCH_RUNS       Number of measured iterations per benchmark (default: 9, median used)
+#   BENCH_GATEWAY_NAME     Override the gateway identity used in result metadata (default: gateway dir name)
+#   BENCH_GATEWAY_CHANNEL  Gateway package channel passed to install.sh (stable | preview; gateway-specific)
 #
 # Methodology:
 #   10 runs total: 1 full-duration warmup (discarded) + 9 measured runs.
@@ -27,8 +29,8 @@ set -Eeuo pipefail
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <gateway-path> [subgraphs-dir] [constant|constant-latency|burst|ramping]"
-  echo "  e.g. $0 composite-schema/gateways/hotchocolate"
-  echo "  e.g. $0 composite-schema/gateways/hotchocolate subgraphs-rust"
+  echo "  e.g. $0 composite-schema/gateways/fusion"
+  echo "  e.g. $0 composite-schema/gateways/fusion subgraphs-rust"
   exit 1
 fi
 
@@ -494,6 +496,7 @@ run_as_perfrunner() {
           BENCH_DIAGNOSTIC_RUN="${BENCH_DIAGNOSTIC_RUN:-}" \
           BENCH_DIAGNOSTICS_DIR="${BENCH_DIAGNOSTICS_DIR:-}" \
           BENCHMARK_SIMULATE_LATENCY="${BENCHMARK_SIMULATE_LATENCY:-}" \
+          BENCH_GATEWAY_CHANNEL="${BENCH_GATEWAY_CHANNEL:-}" \
       "$@"
   else
     "$@"
@@ -665,7 +668,7 @@ if [[ "${USE_PREBUILT_GATEWAY:-0}" == "1" ]]; then
     exit 1
   fi
 
-  if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/hotchocolate" ]] && ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
+  if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/fusion" ]] && ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
     echo "Error: expected dotnet runtime in prebuilt gateway mode, but it is not available to perfrunner"
     exit 1
   fi
@@ -836,6 +839,9 @@ gateway_rss_kb() {
 # ---- Run iterations ----------------------------------------------------------
 
 GATEWAY_NAME="$(basename "$GATEWAY_REL")"
+if [[ -n "${BENCH_GATEWAY_NAME:-}" ]]; then
+  GATEWAY_NAME="$BENCH_GATEWAY_NAME"
+fi
 SUBGRAPH_VARIANT="$(basename "$SUBGRAPHS_DIR")"
 if [[ -n "${BENCH_SUBGRAPH_TECH:-}" ]]; then
   SUBGRAPH_TECH="$BENCH_SUBGRAPH_TECH"
