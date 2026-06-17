@@ -27,6 +27,7 @@ builder.Services
 
 builder
     .AddGraphQLGateway()
+    .ModifyServerOptions(o => o.MaxConcurrentExecutions = 70)
     .AddFileSystemConfiguration("./gateway.far");
 
 var app = builder.Build();
