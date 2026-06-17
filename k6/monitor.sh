@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Samples CPU, RSS, and k6 metrics for an entire process tree.
-# Usage: ./monitor.sh [-g <pgid> | -p <pid>] [-o data.csv] [-i 1] [-k k6_api_addr] [-K k6_cpuset] [-S subgraph_cpuset]
+# Usage: ./monitor.sh [-g <pgid> | -p <pid>] [-o data.csv] [-i 1] [-k k6_api_addr] [-K k6_cpuset] [-S subgraph_cpuset] [-G gateway_cpuset]
 #   -g PGID        Process group id to monitor
 #   -p PID         Leader process id to monitor
 #   -o OUTPUT      CSV file (default: data.csv)
@@ -10,6 +10,7 @@ set -Eeuo pipefail
 #   -k K6_API      k6 REST API address (e.g., 127.0.0.1:6565)
 #   -K K6_CPUSET   k6 CPU core set (e.g., "1,9")
 #   -S SUB_CPUSET  subgraph CPU core set (e.g., "4-7,12-15")
+#   -G GW_CPUSET   gateway CPU core set (e.g., "2,3,10,11")
 
 PGID=""
 LEADER_PID=""
@@ -18,8 +19,9 @@ INTERVAL="1"
 K6_API=""
 K6_CPUSET=""
 SUBGRAPH_CPUSET=""
+GATEWAY_CPUSET=""
 
-while getopts ":g:p:o:i:k:K:S:" opt; do
+while getopts ":g:p:o:i:k:K:S:G:" opt; do
   case "$opt" in
     g) PGID="$OPTARG" ;;
     p) LEADER_PID="$OPTARG" ;;
@@ -28,7 +30,8 @@ while getopts ":g:p:o:i:k:K:S:" opt; do
     k) K6_API="$OPTARG" ;;
     K) K6_CPUSET="$OPTARG" ;;
     S) SUBGRAPH_CPUSET="$OPTARG" ;;
-    *) echo "Usage: $0 [-g <pgid> | -p <pid>] [-o output.csv] [-i interval] [-k k6_api] [-K k6_cpuset] [-S subgraph_cpuset]"; exit 1 ;;
+    G) GATEWAY_CPUSET="$OPTARG" ;;
+    *) echo "Usage: $0 [-g <pgid> | -p <pid>] [-o output.csv] [-i interval] [-k k6_api] [-K k6_cpuset] [-S subgraph_cpuset] [-G gateway_cpuset]"; exit 1 ;;
   esac
 done
 
@@ -44,7 +47,7 @@ else
     echo "Monitoring PID tree $LEADER_PID. Writing to $OUTPUT_FILE. Ctrl+C to stop."
 fi
 
-echo "Seconds,VUs,RPS,P95_ms,Req_success_rate,Total_CPU,K6_Core_CPU,Subgraph_Core_CPU,Total_RSS_KB" > "$OUTPUT_FILE"
+echo "Seconds,VUs,RPS,P95_ms,Req_success_rate,Total_CPU,K6_Core_CPU,Subgraph_Core_CPU,Gateway_Core_CPU,Total_RSS_KB" > "$OUTPUT_FILE"
 
 list_descendant_pids() {
   local root_pid="$1"
@@ -164,11 +167,13 @@ declare -A CORE_SET=()
 ALL_CORES=()
 K6_CORES=()
 SUBGRAPH_CORES=()
+GATEWAY_CORES=()
 
 read -r -a K6_CORES <<< "$(expand_cpuset "$K6_CPUSET")"
 read -r -a SUBGRAPH_CORES <<< "$(expand_cpuset "$SUBGRAPH_CPUSET")"
+read -r -a GATEWAY_CORES <<< "$(expand_cpuset "$GATEWAY_CPUSET")"
 
-for core in "${K6_CORES[@]}" "${SUBGRAPH_CORES[@]}"; do
+for core in "${K6_CORES[@]}" "${SUBGRAPH_CORES[@]}" "${GATEWAY_CORES[@]}"; do
   [[ -z "${core:-}" ]] && continue
   if [[ -z "${CORE_SET[$core]:-}" ]]; then
     CORE_SET["$core"]=1
@@ -269,18 +274,20 @@ while true; do
   RSS_KB="$(echo "$CPU_RSS" | cut -d, -f2)"
   K6_CORE_CPU="0.00"
   SUBGRAPH_CORE_CPU="0.00"
+  GATEWAY_CORE_CPU="0.00"
 
   if [[ -f /proc/stat && ${#ALL_CORES[@]} -gt 0 ]]; then
     capture_core_snapshot
     K6_CORE_CPU="$(group_avg_usage K6_CORES)"
     SUBGRAPH_CORE_CPU="$(group_avg_usage SUBGRAPH_CORES)"
+    GATEWAY_CORE_CPU="$(group_avg_usage GATEWAY_CORES)"
     save_prev_snapshot
   fi
 
   if [[ $VUS -gt 0 ]]; then
       NOW=$(date +%s)
       ELAPSED=$((NOW - START_TIME))
-      echo "$ELAPSED,$VUS,$RPS,$P95_MS,$REQ_SUCCESS_RATE,$CPU,$K6_CORE_CPU,$SUBGRAPH_CORE_CPU,$RSS_KB" >> "$OUTPUT_FILE"
+      echo "$ELAPSED,$VUS,$RPS,$P95_MS,$REQ_SUCCESS_RATE,$CPU,$K6_CORE_CPU,$SUBGRAPH_CORE_CPU,$GATEWAY_CORE_CPU,$RSS_KB" >> "$OUTPUT_FILE"
   fi
 
   sleep "$INTERVAL"
