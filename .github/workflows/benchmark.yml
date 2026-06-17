@@ -1274,3 +1274,21 @@ jobs:
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Latest root files were not updated because one or more benchmark jobs failed." >> $GITHUB_STEP_SUMMARY
+
+      - name: Delete failed run results
+        if: ${{ needs.benchmark-constant.result != 'success' || needs.benchmark-burst.result != 'success' || needs.benchmark-constant-latency.result != 'success' || needs.generate-results-constant.result != 'success' || needs.generate-results-burst.result != 'success' || needs.generate-results-constant-latency.result != 'success' }}
+        run: |
+          # benchmark-runs/ must only contain successful runs. The generate-results
+          # jobs commit per-mode files even when benchmarks failed, so a failed run
+          # leaves a stale directory behind — remove it here.
+          RUN_RESULTS_DIR="benchmark-runs/${{ github.run_number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [[ -d "$RUN_RESULTS_DIR" ]]; then
+            git rm -r --ignore-unmatch "$RUN_RESULTS_DIR"
+            git diff --cached --quiet || git commit -m "Remove failed benchmark run #${{ github.run_number }} results"
+            git push
+            echo "- Removed \`$RUN_RESULTS_DIR\` because the run failed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- No \`$RUN_RESULTS_DIR\` directory to remove." >> $GITHUB_STEP_SUMMARY
+          fi
