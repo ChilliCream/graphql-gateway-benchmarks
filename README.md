@@ -36,7 +36,7 @@ Both benchmark families support both subgraph variants:
 - [Hive Router](./apollo-federation/gateways/hive-router) (Rust)
 
 ### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
-- [Fusion](./composite-schema/gateways/fusion) (.NET) — benchmarked as latest stable (`fusion`), plus latest preview (`fusion-nightly`) when a preview newer than the latest stable exists
+- [Fusion](./composite-schema/gateways/fusion) (.NET) — benchmarked as latest stable (`fusion`, built and run on the .NET 10 SDK), plus latest preview (`fusion-nightly`, built and run on the latest .NET 11 preview SDK bundled into its prebuilt artifact) when a preview newer than the latest stable exists
 
 ## Running benchmarks locally
 
@@ -96,7 +96,7 @@ Environment variables:
 | `BENCH_VUS` | `50` constant / `500` burst | VU target passed to `k6/k6.js` |
 | `BENCH_DISPLAY_NAME` | _(auto)_ | Override report display name |
 | `BENCH_GATEWAY_NAME` | _(auto)_ | Override gateway identity in result metadata (used to split stable vs preview rows) |
-| `BENCH_GATEWAY_CHANNEL` | `stable` | Gateway package channel for `fusion`'s `install.sh` (`stable` / `preview`) |
+| `BENCH_GATEWAY_CHANNEL` | `stable` | Gateway package channel for `fusion`'s `install.sh` (`stable` = .NET 10 SDK + latest stable HotChocolate; `preview` = bundled .NET 11 preview SDK + latest preview HotChocolate) |
 | `BENCH_SUBGRAPH_TECH` | _(auto)_ | Explicit subgraph tech label (`rust` / `.net`) |
 | `USE_PREBUILT_SUBGRAPHS` | `0` | Skip `build.sh` and expect prebuilt subgraph artifact |
 | `USE_PREBUILT_GATEWAY` | `0` | Skip `install.sh` and expect prebuilt gateway artifact |

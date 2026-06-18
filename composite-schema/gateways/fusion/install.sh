@@ -3,27 +3,10 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-REQUIRED_DOTNET_MAJOR=10
-
-# --- Ensure .NET SDK is installed ---
-if command -v dotnet &>/dev/null; then
-  INSTALLED_MAJOR=$(dotnet --version | cut -d. -f1)
-  if [[ "$INSTALLED_MAJOR" -ge "$REQUIRED_DOTNET_MAJOR" ]]; then
-    echo ".NET SDK already installed: $(dotnet --version)"
-  else
-    echo ".NET SDK $INSTALLED_MAJOR found but need $REQUIRED_DOTNET_MAJOR+. Installing..."
-    curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
-    export PATH="$HOME/.dotnet:$PATH"
-  fi
-else
-  echo ".NET SDK not found. Installing .NET $REQUIRED_DOTNET_MAJOR..."
-  curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
-  export PATH="$HOME/.dotnet:$PATH"
-fi
-
 # --- Resolve the HotChocolate version channel ---
-# stable  = latest non-prerelease (default)
-# preview = newest prerelease by SemVer precedence (the latest nightly/preview)
+# stable  = latest non-prerelease (default) — built and run on the .NET 10 SDK.
+# preview = newest prerelease by SemVer precedence (the latest nightly/preview) —
+#           built and run on the latest .NET 11 preview SDK.
 CHANNEL="${BENCH_GATEWAY_CHANNEL:-stable}"
 case "$CHANNEL" in
   stable|preview) ;;
@@ -32,6 +15,88 @@ case "$CHANNEL" in
     exit 1
     ;;
 esac
+
+# --- Channel-specific build inputs -------------------------------------------
+# The preview channel (fusion-nightly) must compile AND run on .NET 11. Because
+# the benchmark machine runs the *prebuilt* artifact (install.sh is skipped
+# there), the .NET 11 preview SDK is installed *inside* the gateway directory so
+# it travels with the artifact, and the gateway is retargeted to net11.0:
+#   - $SCRIPT_DIR/.dotnet            bundled .NET 11 preview SDK (start.sh prefers it)
+#   - $SCRIPT_DIR/global.json        pins the bundled SDK (overrides the repo-root
+#                                    global.json, which pins .NET 10 / latestMinor)
+#   - eShop.Gateway/bench.props      retargets the gateway to net11.0 (imported by
+#                                    the csproj only when present)
+BUNDLED_DOTNET_DIR="$SCRIPT_DIR/.dotnet"
+GATEWAY_GLOBAL_JSON="$SCRIPT_DIR/global.json"
+BENCH_PROPS="$SCRIPT_DIR/eShop.Gateway/bench.props"
+
+if [[ "$CHANNEL" == "preview" ]]; then
+  # --- Install the latest .NET 11 preview SDK, bundled into the gateway dir ---
+  echo "Installing the latest .NET 11 preview SDK into $BUNDLED_DOTNET_DIR ..."
+  rm -rf "$BUNDLED_DOTNET_DIR"
+  curl -sSL https://dot.net/v1/dotnet-install.sh \
+    | bash -s -- --channel 11.0 --quality preview --install-dir "$BUNDLED_DOTNET_DIR"
+
+  export DOTNET_ROOT="$BUNDLED_DOTNET_DIR"
+  export PATH="$BUNDLED_DOTNET_DIR:$PATH"
+  DOTNET="$BUNDLED_DOTNET_DIR/dotnet"
+
+  # --list-sdks ignores global.json and (with multi-level lookup off) only lists
+  # SDKs in the bundled dir, so this is the version we actually installed.
+  SDK_VERSION="$("$DOTNET" --list-sdks | awk '{print $1}' | sort -V | tail -n1)"
+  SDK_MAJOR="${SDK_VERSION%%.*}"
+  if [[ "$SDK_MAJOR" != "11" ]]; then
+    echo "ERROR: preview channel requires a .NET 11 SDK but installed '$SDK_VERSION'"
+    exit 1
+  fi
+  echo "Bundled .NET SDK: $SDK_VERSION"
+
+  # Pin the bundled SDK so .NET 11 is selected at build *and* run time. The
+  # repo-root global.json pins .NET 10 with rollForward=latestMinor, which would
+  # otherwise force SDK 10 here — a nearer global.json takes precedence.
+  cat > "$GATEWAY_GLOBAL_JSON" <<EOF
+{
+  "sdk": {
+    "version": "$SDK_VERSION",
+    "rollForward": "latestMinor",
+    "allowPrerelease": true
+  }
+}
+EOF
+
+  # Retarget the gateway to net11.0 (imported by eShop.Gateway.csproj when present).
+  cat > "$BENCH_PROPS" <<'EOF'
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <TargetFrameworks>net11.0</TargetFrameworks>
+  </PropertyGroup>
+</Project>
+EOF
+else
+  # --- stable: build and run on the .NET 10 SDK ---
+  # Remove any preview retargeting left over from an earlier preview build in this
+  # working tree (CI uses fresh checkouts; local runs may reuse the tree).
+  rm -rf "$BUNDLED_DOTNET_DIR"
+  rm -f "$GATEWAY_GLOBAL_JSON" "$BENCH_PROPS"
+
+  REQUIRED_DOTNET_MAJOR=10
+  if command -v dotnet &>/dev/null; then
+    INSTALLED_MAJOR=$(dotnet --version | cut -d. -f1)
+    if [[ "$INSTALLED_MAJOR" -ge "$REQUIRED_DOTNET_MAJOR" ]]; then
+      echo ".NET SDK already installed: $(dotnet --version)"
+    else
+      echo ".NET SDK $INSTALLED_MAJOR found but need $REQUIRED_DOTNET_MAJOR+. Installing..."
+      curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+      export PATH="$HOME/.dotnet:$PATH"
+    fi
+  else
+    echo ".NET SDK not found. Installing .NET $REQUIRED_DOTNET_MAJOR..."
+    curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
+    export PATH="$HOME/.dotnet:$PATH"
+  fi
+  DOTNET="dotnet"
+fi
 
 echo "Fetching latest $CHANNEL HotChocolate version from NuGet..."
 SELECTED_VERSION=$(curl -s "https://api.nuget.org/v3-flatcontainer/hotchocolate.aspnetcore/index.json" \
@@ -104,7 +169,7 @@ done
 
 # --- Build ---
 echo "Building Fusion gateway ($CHANNEL channel)..."
-cd "$SCRIPT_DIR/eShop.Gateway" && dotnet build -c Release --nologo -v quiet
+cd "$SCRIPT_DIR/eShop.Gateway" && "$DOTNET" build -c Release --nologo -v quiet
 
 echo "$SELECTED_VERSION" > "$SCRIPT_DIR/version.txt"
 echo "Fusion gateway build complete (channel: $CHANNEL, version: $SELECTED_VERSION)."

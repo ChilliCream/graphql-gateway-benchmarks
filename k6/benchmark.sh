@@ -668,9 +668,24 @@ if [[ "${USE_PREBUILT_GATEWAY:-0}" == "1" ]]; then
     exit 1
   fi
 
-  if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/fusion" ]] && ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
-    echo "Error: expected dotnet runtime in prebuilt gateway mode, but it is not available to perfrunner"
-    exit 1
+  if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/fusion" ]]; then
+    # fusion-nightly bundles its own .NET 11 SDK inside the artifact (.dotnet/),
+    # which start.sh prefers at launch. When present, assert it is the .NET 11 SDK
+    # the gateway was built for, so a missing/corrupt bundle fails loudly here
+    # instead of later as a gateway-health timeout. Stable fusion has no bundle and
+    # relies on perfrunner's system dotnet.
+    if [[ -x "$GATEWAY_DIR/.dotnet/dotnet" ]]; then
+      # --list-sdks ignores global.json, so it reports the actually-bundled SDK.
+      BUNDLED_SDK_VERSION="$(run_as_perfrunner "$GATEWAY_DIR/.dotnet/dotnet" --list-sdks 2>/dev/null | awk '{print $1}' | sort -V | tail -n1)"
+      if [[ "${BUNDLED_SDK_VERSION%%.*}" != "11" ]]; then
+        echo "Error: bundled gateway .NET SDK at $GATEWAY_DIR/.dotnet is not .NET 11 (found '${BUNDLED_SDK_VERSION:-none}')"
+        exit 1
+      fi
+      echo "Gateway bundled .NET SDK: $BUNDLED_SDK_VERSION (fusion-nightly runs on .NET 11)"
+    elif ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
+      echo "Error: expected dotnet runtime in prebuilt gateway mode, but it is not available to perfrunner"
+      exit 1
+    fi
   fi
 
   echo "Using prebuilt gateway artifact, skipping gateway install.sh"
