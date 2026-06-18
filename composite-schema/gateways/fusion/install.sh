@@ -24,8 +24,9 @@ esac
 #   - $SCRIPT_DIR/.dotnet            bundled .NET 11 preview SDK (start.sh prefers it)
 #   - $SCRIPT_DIR/global.json        pins the bundled SDK (overrides the repo-root
 #                                    global.json, which pins .NET 10 / latestMinor)
-#   - eShop.Gateway/bench.props      retargets the gateway to net11.0 (imported by
-#                                    the csproj only when present)
+#   - eShop.Gateway/bench.props      retargets the gateway to net11.0 and opts
+#                                    into runtime-async (imported by the csproj
+#                                    only when present)
 BUNDLED_DOTNET_DIR="$SCRIPT_DIR/.dotnet"
 GATEWAY_GLOBAL_JSON="$SCRIPT_DIR/global.json"
 BENCH_PROPS="$SCRIPT_DIR/eShop.Gateway/bench.props"
@@ -64,12 +65,27 @@ if [[ "$CHANNEL" == "preview" ]]; then
 }
 EOF
 
-  # Retarget the gateway to net11.0 (imported by eShop.Gateway.csproj when present).
+  # Retarget the gateway to net11.0 and opt into .NET 11 runtime-async (imported
+  # by eShop.Gateway.csproj when present).
+  #
+  # runtime-async replaces compiler-generated async state machines with the
+  # runtime-provided async feature. Since .NET 11 Preview 3 the feature switch
+  # alone is enough — the [RequiresPreviewFeatures] gate was removed, so
+  # <EnablePreviewFeatures> is intentionally NOT set (we always install the
+  # latest preview SDK, so the modern opt-in always applies).
+  #
+  # Scope: this flag only affects async methods compiled in THIS project
+  # (eShop.Gateway). The .NET 11 BCL is already built with runtime-async
+  # (Preview 4+), but the prebuilt HotChocolate packages are not — to exercise
+  # runtime-async through HotChocolate's execution pipeline, the HotChocolate
+  # packages themselves must be compiled with runtime-async=on upstream; this
+  # benchmark then picks them up automatically via the preview channel.
   cat > "$BENCH_PROPS" <<'EOF'
 <Project>
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <TargetFrameworks>net11.0</TargetFrameworks>
+    <Features>$(Features);runtime-async=on</Features>
   </PropertyGroup>
 </Project>
 EOF
