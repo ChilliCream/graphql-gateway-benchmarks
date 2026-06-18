@@ -983,8 +983,26 @@ json.dump({
 
   maybe_taskset "$K6_CPUSET" k6 run \
     --address "$K6_API_ADDR" \
+    --log-output "file=$RESULT_DIR/k6_console.log" \
+    --log-format raw \
     "${K6_ENV_ARGS[@]}" \
     "$REPO_ROOT/k6/k6.js"
+
+  # ---- Extract sampled error responses ---------------------------------------
+  # k6.js logs capped per-VU error samples as "ERRSAMPLE|<json>" lines via the
+  # logger (routed to k6_console.log above). Pull them into a clean JSONL file
+  # that ships in the run artifact; drop everything if the run was error-free.
+
+  if [[ -f "$RESULT_DIR/k6_console.log" ]]; then
+    grep '^ERRSAMPLE|' "$RESULT_DIR/k6_console.log" \
+      | sed 's/^ERRSAMPLE|//' > "$RESULT_DIR/error_responses.jsonl.tmp" || true
+    if [[ -s "$RESULT_DIR/error_responses.jsonl.tmp" ]]; then
+      mv "$RESULT_DIR/error_responses.jsonl.tmp" "$RESULT_DIR/error_responses.jsonl"
+    else
+      rm -f "$RESULT_DIR/error_responses.jsonl.tmp"
+    fi
+    rm -f "$RESULT_DIR/k6_console.log"
+  fi
 
   # ---- Stop monitor for this run ---------------------------------------------
 

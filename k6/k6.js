@@ -13,6 +13,13 @@ const duration = __ENV.BENCH_OVER_TIME || (isConstant ? "120s" : "60s");
 
 const successRate = new Rate("success_rate");
 
+// Error-response sampling: capture a small, per-VU-capped sample of error
+// response bodies into the run artifact for later analysis. Gated on
+// SUMMARY_PATH so only measured runs capture (the warmup run omits it).
+const CAPTURE_MAX_PER_VU = parseInt(__ENV.CAPTURE_MAX_PER_VU || "5", 10);
+const CAPTURE_BODY_BYTES = parseInt(__ENV.CAPTURE_BODY_BYTES || "1024", 10);
+let capturedThisVU = 0;
+
 const summaryTrendStats = [
   "avg",
   "min",
@@ -196,7 +203,7 @@ function makeGraphQLRequest() {
         printOnce(
           "graphql_errors",
           `‼️ Got GraphQL errors, here's a sample:`,
-          res.json.errors
+          res.json().errors
         );
       }
 
@@ -222,6 +229,24 @@ function makeGraphQLRequest() {
   });
 
   successRate.add(ok);
+
+  // Sample error response bodies (capped per VU) for post-run analysis.
+  // Fires only on a failed request and only during measured runs, so clean
+  // runs and the warmup never log and throughput stays unperturbed.
+  if (!ok && __ENV.SUMMARY_PATH && capturedThisVU < CAPTURE_MAX_PER_VU) {
+    capturedThisVU++;
+    console.log(
+      "ERRSAMPLE|" +
+        JSON.stringify({
+          vu: __VU,
+          iter: __ITER,
+          status: res.status,
+          error_code: res.error_code,
+          error: res.error,
+          body: String(res.body || "").slice(0, CAPTURE_BODY_BYTES),
+        })
+    );
+  }
 }
 
 function checkResponseStructure(x) {
