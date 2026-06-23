@@ -1,0 +1,26 @@
+# feddi Gateway process configuration for the benchmark.
+# Read from the working directory by the launcher at startup.
+#
+# Port layout matches the benchmark harness (k6/benchmark.sh reserves 5220-5224):
+#   5220 = gateway GraphQL endpoint (the URL k6 hits)
+#   5221-5224 = subgraphs
+# The admin (9091) and management (9090) ports are gateway-internal and are not
+# part of the reserved benchmark range; they stay bound to localhost.
+port: 5220
+
+# Keep introspection on so the composed schema can be inspected; the benchmark
+# query itself is a plain data query.
+enable-introspection: true
+
+# Admin endpoint that accepts the subgraph-definition ZIP upload (start.sh posts
+# subgraphs.zip here after launch). Localhost only.
+admin-port: 9091
+admin-address: 127.0.0.1
+
+# Actuator endpoints; GET /actuator/health is the benchmark health check
+# (see settings.json). Localhost only.
+management-port: 9090
+management-address: 127.0.0.1
+
+logging:
+  dir: ./logs

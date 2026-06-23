@@ -23,6 +23,7 @@ on:
           - hive-router
           - fusion
           - fusion-nightly
+          - feddi
       benchmark:
         description: 'Benchmark mode'
         required: false
@@ -250,6 +251,11 @@ jobs:
                   "name": "fusion-nightly",
                   "gateway_artifact": "prebuilt-gateway-fusion-nightly",
                   "channel": "preview",
+              },
+              {
+                  "path": "composite-schema/gateways/feddi",
+                  "name": "feddi",
+                  "gateway_artifact": "prebuilt-gateway-feddi",
               },
           ]
 
