@@ -37,6 +37,7 @@ Both benchmark families support both subgraph variants:
 
 ### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
 - [Fusion](./composite-schema/gateways/fusion) (.NET) — benchmarked as latest stable (`fusion`, built and run on the .NET 10 SDK), plus latest preview (`fusion-nightly`, built and run on the latest .NET 11 preview SDK bundled into its prebuilt artifact) when a preview newer than the latest stable exists
+- [feddi](./composite-schema/gateways/feddi) (JVM) — built from source and bundled with a JDK 25 ([feddi-dev/feddi-gateway](https://github.com/feddi-dev/feddi-gateway)). See its [README](./composite-schema/gateways/feddi/README.md) for setup and a known heavy-query planner limitation.
 
 ## Running benchmarks locally
 
