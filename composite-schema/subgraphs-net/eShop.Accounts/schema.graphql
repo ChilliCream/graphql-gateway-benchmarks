@@ -8,12 +8,23 @@ type Query {
   users: [User!]!
 }
 
-type User {
+type User @key(fields: "id") {
   id: ID!
   name: String
   username: String
   birthday: Int
 }
+
+scalar FieldSelectionSet
+
+"""
+The @key directive is used to designate an entity's unique key,
+which identifies how to uniquely reference an instance of
+an entity across different source schemas.
+"""
+directive @key("The field selection set syntax." fields: FieldSelectionSet!) repeatable on
+  | OBJECT
+  | INTERFACE
 
 """
 The @lookup directive is used within a source schema to specify output fields

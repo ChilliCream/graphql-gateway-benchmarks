@@ -22,7 +22,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 FEDDI_REPO="https://github.com/feddi-dev/feddi-gateway.git"
-FEDDI_REF="6daa034a2da95770a7cdedec40afd7f95aa5bba0"  # pinned for reproducibility
+FEDDI_REF="77271dc84a06a9521051f761a14d419e83d6eb2a"  # pinned for reproducibility
 
 JDK_DIR="$SCRIPT_DIR/.jdk"
 SOURCE_DIR="$SCRIPT_DIR/source"
@@ -117,13 +117,44 @@ if [[ ! -x "$DIST_DIR/feddi-gateway/bin/feddi-gateway" ]] || [[ ! -f "$DIST_DIR/
   exit 1
 fi
 
-# --- 4. Assemble the subgraph-definition ZIP (uploaded by start.sh) ----------
+# --- 4. Refresh subgraph SDLs from the canonical .NET source schemas ---------
+#
+# feddi composes from subgraph-config/<name>/schema.graphqls. Rather than keep
+# hand-maintained copies (which silently drift from the subgraphs the benchmark
+# actually runs), copy the canonical HotChocolate exports straight in. Since
+# HotChocolate 16.3+ emits @key(fields:…) on entities natively, the raw export
+# composes in feddi as-is — no directive trimming needed. Each subgraph's
+# config.yaml (the feddi-specific subgraph URL) stays source-controlled; only the
+# .graphqls SDL is generated here.
+
+SUBGRAPHS_NET="$SCRIPT_DIR/../../subgraphs-net"
+SUBGRAPH_MAP=(
+  "accounts:eShop.Accounts"
+  "inventory:eShop.Inventory"
+  "products:eShop.Products"
+  "reviews:eShop.Reviews"
+)
+echo "Refreshing subgraph SDLs from $SUBGRAPHS_NET ..."
+for entry in "${SUBGRAPH_MAP[@]}"; do
+  name="${entry%%:*}"
+  proj="${entry##*:}"
+  src="$SUBGRAPHS_NET/$proj/schema.graphql"
+  dst="$SCRIPT_DIR/subgraph-config/$name/schema.graphqls"
+  if [[ ! -f "$src" ]]; then
+    echo "ERROR: canonical subgraph schema not found: $src"
+    exit 1
+  fi
+  cp "$src" "$dst"
+  echo "  $proj/schema.graphql -> subgraph-config/$name/schema.graphqls"
+done
+
+# --- 5. Assemble the subgraph-definition ZIP (uploaded by start.sh) ----------
 
 echo "Assembling subgraphs.zip from subgraph-config/ ..."
 rm -f "$SCRIPT_DIR/subgraphs.zip"
 ( cd "$SCRIPT_DIR/subgraph-config" && zip -qr "$SCRIPT_DIR/subgraphs.zip" . )
 
-# --- 5. Record version -------------------------------------------------------
+# --- 6. Record version -------------------------------------------------------
 
 echo "$FEDDI_REF" | cut -c1-12 > "$SCRIPT_DIR/version.txt"
 echo "feddi Gateway build complete (commit: $(cat "$SCRIPT_DIR/version.txt"))."
