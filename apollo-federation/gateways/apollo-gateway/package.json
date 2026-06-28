@@ -5,12 +5,12 @@
     "start": "tsx index.ts"
   },
   "dependencies": {
-    "@as-integrations/express4": "1.1.2",
-    "tsx": "4.21.0",
-    "typescript": "5.9.3",
-    "graphql": "16.13.2",
-    "express": "4.22.1",
+    "@apollo/gateway": "2.14.2",
     "@apollo/server": "5.5.1",
-    "@apollo/gateway": "2.14.1"
+    "@as-integrations/express4": "1.1.2",
+    "express": "4.22.1",
+    "graphql": "16.13.2",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
   }
 }

@@ -795,6 +795,13 @@ jobs:
           sudo chmod -R u+rwX,g+rwX "${{ matrix.gateway.path }}/diagnostics"
 
       - name: Run benchmark
+        # Feddi crashes under the burst stress scenario due to an upstream
+        # heavy-query planner defect (fix pending upstream). Tolerate ONLY
+        # feddi's burst failure so a known crash doesn't fail the whole run.
+        # The crash is NOT masked: the missing result still surfaces as a
+        # failed entry in the burst results table. Remove this once the
+        # upstream defect is fixed.
+        continue-on-error: ${{ matrix.gateway.name == 'feddi' }}
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
