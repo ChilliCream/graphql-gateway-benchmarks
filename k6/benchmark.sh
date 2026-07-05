@@ -19,6 +19,7 @@ set -Eeuo pipefail
 #   BENCH_RUNS       Number of measured iterations per benchmark (default: 9, median used)
 #   BENCH_GATEWAY_NAME     Override the gateway identity used in result metadata (default: gateway dir name)
 #   BENCH_GATEWAY_CHANNEL  Gateway package channel passed to install.sh (stable | preview; gateway-specific)
+#   BENCH_GATEWAY_DOTNET   .NET runtime/target passed to install.sh (10 | 11; fusion-specific)
 #
 # Methodology:
 #   10 runs total: 1 full-duration warmup (discarded) + 9 measured runs.
@@ -497,6 +498,7 @@ run_as_perfrunner() {
           BENCH_DIAGNOSTICS_DIR="${BENCH_DIAGNOSTICS_DIR:-}" \
           BENCHMARK_SIMULATE_LATENCY="${BENCHMARK_SIMULATE_LATENCY:-}" \
           BENCH_GATEWAY_CHANNEL="${BENCH_GATEWAY_CHANNEL:-}" \
+          BENCH_GATEWAY_DOTNET="${BENCH_GATEWAY_DOTNET:-}" \
       "$@"
   else
     "$@"
@@ -669,11 +671,11 @@ if [[ "${USE_PREBUILT_GATEWAY:-0}" == "1" ]]; then
   fi
 
   if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/fusion" ]]; then
-    # fusion-nightly bundles its own .NET 11 SDK inside the artifact (.dotnet/),
-    # which start.sh prefers at launch. When present, assert it is the .NET 11 SDK
-    # the gateway was built for, so a missing/corrupt bundle fails loudly here
-    # instead of later as a gateway-health timeout. Stable fusion has no bundle and
-    # relies on perfrunner's system dotnet.
+    # The net11 build (fusion-nightly-net11) bundles its own .NET 11 SDK inside the
+    # artifact (.dotnet/), which start.sh prefers at launch. When present, assert it
+    # is the .NET 11 SDK the gateway was built for, so a missing/corrupt bundle fails
+    # loudly here instead of later as a gateway-health timeout. The .NET 10 builds
+    # (fusion and fusion-nightly) have no bundle and rely on perfrunner's system dotnet.
     if [[ -x "$GATEWAY_DIR/.dotnet/dotnet" ]]; then
       # --list-sdks ignores global.json, so it reports the actually-bundled SDK.
       BUNDLED_SDK_VERSION="$(run_as_perfrunner "$GATEWAY_DIR/.dotnet/dotnet" --list-sdks 2>/dev/null | awk '{print $1}' | sort -V | tail -n1)"
@@ -681,7 +683,7 @@ if [[ "${USE_PREBUILT_GATEWAY:-0}" == "1" ]]; then
         echo "Error: bundled gateway .NET SDK at $GATEWAY_DIR/.dotnet is not .NET 11 (found '${BUNDLED_SDK_VERSION:-none}')"
         exit 1
       fi
-      echo "Gateway bundled .NET SDK: $BUNDLED_SDK_VERSION (fusion-nightly runs on .NET 11)"
+      echo "Gateway bundled .NET SDK: $BUNDLED_SDK_VERSION (net11 build runs on .NET 11)"
     elif ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
       echo "Error: expected dotnet runtime in prebuilt gateway mode, but it is not available to perfrunner"
       exit 1

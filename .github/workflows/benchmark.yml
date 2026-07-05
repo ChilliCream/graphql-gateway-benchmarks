@@ -23,6 +23,7 @@ on:
           - hive-router
           - fusion
           - fusion-nightly
+          - fusion-nightly-net11
           - feddi
       benchmark:
         description: 'Benchmark mode'
@@ -245,12 +246,21 @@ jobs:
                   "name": "fusion",
                   "gateway_artifact": "prebuilt-gateway-fusion",
                   "channel": "stable",
+                  "dotnet": "10",
               },
               {
                   "path": "composite-schema/gateways/fusion",
                   "name": "fusion-nightly",
                   "gateway_artifact": "prebuilt-gateway-fusion-nightly",
                   "channel": "preview",
+                  "dotnet": "10",
+              },
+              {
+                  "path": "composite-schema/gateways/fusion",
+                  "name": "fusion-nightly-net11",
+                  "gateway_artifact": "prebuilt-gateway-fusion-nightly-net11",
+                  "channel": "preview",
+                  "dotnet": "11",
               },
               {
                   "path": "composite-schema/gateways/feddi",
@@ -300,6 +310,7 @@ jobs:
                       "name": f"{gateway['name']}-{variant['suffix']}",
                       "base_name": gateway["name"],
                       "channel": gateway.get("channel", "stable"),
+                      "dotnet": gateway.get("dotnet", "10"),
                       "subgraphs": variant["dir"],
                       "subgraph_tech": variant["tech"],
                       "display_name": f"{gateway['name']} ({variant['tech']} subgraphs)",
@@ -314,23 +325,25 @@ jobs:
               if selected_subgraph_tech:
                   chosen = [entry for entry in chosen if entry["subgraph_tech"] == selected_subgraph_tech]
 
-          # Skip the fusion-nightly (preview) variant unless a HotChocolate prerelease
-          # newer than the latest stable exists — otherwise "nightly" would benchmark a
-          # build older than (or equal to) the stable run. An explicit fusion-nightly
-          # selection is always honored.
-          nightly_in_chosen = any(e["base_name"] == "fusion-nightly" for e in chosen)
-          nightly_explicit = selected_gateway == "fusion-nightly"
+          # Skip the fusion-nightly (preview) variants — both the .NET 10 and the
+          # .NET 11 build — unless a HotChocolate prerelease newer than the latest
+          # stable exists; otherwise "nightly" would benchmark a build older than (or
+          # equal to) the stable run. An explicit fusion-nightly* selection is always
+          # honored.
+          nightly_base_names = ("fusion-nightly", "fusion-nightly-net11")
+          nightly_in_chosen = any(e["base_name"] in nightly_base_names for e in chosen)
+          nightly_explicit = selected_gateway in nightly_base_names
           if nightly_in_chosen and not nightly_explicit:
               preview_ahead, latest_stable_str, latest_preview_str = hotchocolate_preview_is_ahead()
               if preview_ahead:
                   print(
-                      f"Including fusion-nightly: preview {latest_preview_str} is ahead of "
-                      f"stable {latest_stable_str}."
+                      f"Including fusion-nightly variants: preview {latest_preview_str} is "
+                      f"ahead of stable {latest_stable_str}."
                   )
               else:
-                  chosen = [e for e in chosen if e["base_name"] != "fusion-nightly"]
+                  chosen = [e for e in chosen if e["base_name"] not in nightly_base_names]
                   print(
-                      f"Skipping fusion-nightly: newest prerelease "
+                      f"Skipping fusion-nightly variants: newest prerelease "
                       f"({latest_preview_str or 'none'}) is not ahead of latest stable "
                       f"({latest_stable_str or 'none'})."
                   )
@@ -351,6 +364,7 @@ jobs:
                   "path": entry["path"],
                   "artifact": artifact,
                   "channel": entry["channel"],
+                  "dotnet": entry["dotnet"],
               }
           build_matrix_json = json.dumps(list(builds_by_artifact.values()), separators=(",", ":"))
 
@@ -431,6 +445,7 @@ jobs:
       - name: Build gateway
         env:
           BENCH_GATEWAY_CHANNEL: ${{ matrix.gateway.channel || 'stable' }}
+          BENCH_GATEWAY_DOTNET: ${{ matrix.gateway.dotnet || '10' }}
         run: |
           chmod +x "${{ matrix.gateway.path }}/install.sh"
           (cd "${{ matrix.gateway.path }}" && bash install.sh)
@@ -801,7 +816,10 @@ jobs:
         # The crash is NOT masked: the missing result still surfaces as a
         # failed entry in the burst results table. Remove this once the
         # upstream defect is fixed.
-        continue-on-error: ${{ matrix.gateway.name == 'feddi' }}
+        # NOTE: match base_name, not name — the matrix name is the expanded
+        # 'feddi-net' / 'feddi-rust', so `name == 'feddi'` never matched and the
+        # guard silently did nothing (feddi's burst crash still failed the run).
+        continue-on-error: ${{ matrix.gateway.base_name == 'feddi' }}
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}

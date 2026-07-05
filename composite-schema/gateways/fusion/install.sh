@@ -3,10 +3,24 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Resolve the HotChocolate version channel ---
-# stable  = latest non-prerelease (default) — built and run on the .NET 10 SDK.
-# preview = newest prerelease by SemVer precedence (the latest nightly/preview) —
-#           built and run on the latest .NET 11 preview SDK.
+# The Fusion gateway is benchmarked along two independent axes:
+#
+#   BENCH_GATEWAY_CHANNEL  which HotChocolate NuGet packages to build against
+#                          stable  = latest non-prerelease (default)
+#                          preview = newest prerelease (the latest nightly)
+#
+#   BENCH_GATEWAY_DOTNET   which .NET runtime / target framework to build and run on
+#                          10 = system .NET 10 SDK, targets net10.0 (default)
+#                          11 = bundled .NET 11 preview SDK, targets net11.0 with
+#                               runtime-async opted in
+#
+# The two axes are orthogonal, which is what lets the matrix run the preview
+# packages on BOTH runtimes to isolate framework effects (e.g. runtime-async):
+#   fusion               = stable  packages on .NET 10
+#   fusion-nightly       = preview packages on .NET 10
+#   fusion-nightly-net11 = preview packages on .NET 11
+
+# --- Resolve the HotChocolate package channel --------------------------------
 CHANNEL="${BENCH_GATEWAY_CHANNEL:-stable}"
 case "$CHANNEL" in
   stable|preview) ;;
@@ -16,11 +30,22 @@ case "$CHANNEL" in
     ;;
 esac
 
-# --- Channel-specific build inputs -------------------------------------------
-# The preview channel (fusion-nightly) must compile AND run on .NET 11. Because
-# the benchmark machine runs the *prebuilt* artifact (install.sh is skipped
-# there), the .NET 11 preview SDK is installed *inside* the gateway directory so
-# it travels with the artifact, and the gateway is retargeted to net11.0:
+# --- Resolve the .NET runtime / target framework -----------------------------
+DOTNET_TARGET="${BENCH_GATEWAY_DOTNET:-10}"
+case "$DOTNET_TARGET" in
+  10|11) ;;
+  *)
+    echo "ERROR: unknown BENCH_GATEWAY_DOTNET='$DOTNET_TARGET' (expected '10' or '11')"
+    exit 1
+    ;;
+esac
+
+# --- Target-specific build inputs --------------------------------------------
+# The .NET 11 target (fusion-nightly-net11) must compile AND run on .NET 11.
+# Because the benchmark machine runs the *prebuilt* artifact (install.sh is
+# skipped there), the .NET 11 preview SDK is installed *inside* the gateway
+# directory so it travels with the artifact, and the gateway is retargeted to
+# net11.0:
 #   - $SCRIPT_DIR/.dotnet            bundled .NET 11 preview SDK (start.sh prefers it)
 #   - $SCRIPT_DIR/global.json        pins the bundled SDK (overrides the repo-root
 #                                    global.json, which pins .NET 10 / latestMinor)
@@ -31,7 +56,7 @@ BUNDLED_DOTNET_DIR="$SCRIPT_DIR/.dotnet"
 GATEWAY_GLOBAL_JSON="$SCRIPT_DIR/global.json"
 BENCH_PROPS="$SCRIPT_DIR/eShop.Gateway/bench.props"
 
-if [[ "$CHANNEL" == "preview" ]]; then
+if [[ "$DOTNET_TARGET" == "11" ]]; then
   # --- Install the latest .NET 11 preview SDK, bundled into the gateway dir ---
   echo "Installing the latest .NET 11 preview SDK into $BUNDLED_DOTNET_DIR ..."
   rm -rf "$BUNDLED_DOTNET_DIR"
@@ -47,7 +72,7 @@ if [[ "$CHANNEL" == "preview" ]]; then
   SDK_VERSION="$("$DOTNET" --list-sdks | awk '{print $1}' | sort -V | tail -n1)"
   SDK_MAJOR="${SDK_VERSION%%.*}"
   if [[ "$SDK_MAJOR" != "11" ]]; then
-    echo "ERROR: preview channel requires a .NET 11 SDK but installed '$SDK_VERSION'"
+    echo "ERROR: the net11 target requires a .NET 11 SDK but installed '$SDK_VERSION'"
     exit 1
   fi
   echo "Bundled .NET SDK: $SDK_VERSION"
@@ -90,8 +115,8 @@ EOF
 </Project>
 EOF
 else
-  # --- stable: build and run on the .NET 10 SDK ---
-  # Remove any preview retargeting left over from an earlier preview build in this
+  # --- .NET 10: build and run on the system .NET 10 SDK ---
+  # Remove any .NET 11 retargeting left over from an earlier net11 build in this
   # working tree (CI uses fresh checkouts; local runs may reuse the tree).
   rm -rf "$BUNDLED_DOTNET_DIR"
   rm -f "$GATEWAY_GLOBAL_JSON" "$BENCH_PROPS"
@@ -184,8 +209,8 @@ for csproj in "$SCRIPT_DIR"/*/*.csproj; do
 done
 
 # --- Build ---
-echo "Building Fusion gateway ($CHANNEL channel)..."
+echo "Building Fusion gateway ($CHANNEL channel, .NET $DOTNET_TARGET)..."
 cd "$SCRIPT_DIR/eShop.Gateway" && "$DOTNET" build -c Release --nologo -v quiet
 
 echo "$SELECTED_VERSION" > "$SCRIPT_DIR/version.txt"
-echo "Fusion gateway build complete (channel: $CHANNEL, version: $SELECTED_VERSION)."
+echo "Fusion gateway build complete (channel: $CHANNEL, dotnet: $DOTNET_TARGET, version: $SELECTED_VERSION)."

@@ -16,7 +16,7 @@ error.log
 data.csv
 version.txt
 
-## fusion-nightly (preview) generated build inputs (.NET 11 SDK + retargeting)
+## fusion-nightly-net11 (.NET 11) generated build inputs (bundled .NET 11 SDK + retargeting)
 composite-schema/gateways/fusion/.dotnet/
 composite-schema/gateways/fusion/global.json
 composite-schema/gateways/fusion/eShop.Gateway/bench.props
