@@ -114,6 +114,12 @@ else
   DOTNET="dotnet"
 fi
 
+if [[ -n "${BENCH_GATEWAY_VERSION:-}" ]]; then
+  # Pinned version override — reproduce a specific HotChocolate version instead of
+  # resolving the newest one (e.g. to A/B a known-good nightly against a regression).
+  SELECTED_VERSION="$BENCH_GATEWAY_VERSION"
+  echo "Using pinned HotChocolate version: $SELECTED_VERSION (BENCH_GATEWAY_VERSION)"
+else
 echo "Fetching latest $CHANNEL HotChocolate version from NuGet..."
 SELECTED_VERSION=$(curl -s "https://api.nuget.org/v3-flatcontainer/hotchocolate.aspnetcore/index.json" \
   | CHANNEL="$CHANNEL" python3 -c '
@@ -165,6 +171,7 @@ if not candidates:
 candidates.sort(key=lambda item: item[0])
 print(candidates[-1][1])
 ')
+fi
 
 if [[ -z "$SELECTED_VERSION" ]]; then
   echo "ERROR: Could not determine latest $CHANNEL HotChocolate version"

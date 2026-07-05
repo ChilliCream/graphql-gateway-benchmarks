@@ -251,6 +251,10 @@ jobs:
                   "name": "fusion-nightly",
                   "gateway_artifact": "prebuilt-gateway-fusion-nightly",
                   "channel": "preview",
+                  # Pinned: reproduce a known-good nightly while investigating the
+                  # latency regression seen on newer preview builds. Set to "" (or
+                  # remove) to resume tracking the newest prerelease.
+                  "version": "16.4.0-p.3",
               },
               {
                   "path": "composite-schema/gateways/feddi",
@@ -300,6 +304,7 @@ jobs:
                       "name": f"{gateway['name']}-{variant['suffix']}",
                       "base_name": gateway["name"],
                       "channel": gateway.get("channel", "stable"),
+                      "version": gateway.get("version", ""),
                       "subgraphs": variant["dir"],
                       "subgraph_tech": variant["tech"],
                       "display_name": f"{gateway['name']} ({variant['tech']} subgraphs)",
@@ -351,6 +356,7 @@ jobs:
                   "path": entry["path"],
                   "artifact": artifact,
                   "channel": entry["channel"],
+                  "version": entry.get("version", ""),
               }
           build_matrix_json = json.dumps(list(builds_by_artifact.values()), separators=(",", ":"))
 
@@ -431,6 +437,7 @@ jobs:
       - name: Build gateway
         env:
           BENCH_GATEWAY_CHANNEL: ${{ matrix.gateway.channel || 'stable' }}
+          BENCH_GATEWAY_VERSION: ${{ matrix.gateway.version || '' }}
         run: |
           chmod +x "${{ matrix.gateway.path }}/install.sh"
           (cd "${{ matrix.gateway.path }}" && bash install.sh)
