@@ -24,6 +24,7 @@ on:
           - fusion
           - fusion-nightly
           - fusion-nightly-net11
+          - fusion-nightly-fed
           - feddi
       benchmark:
         description: 'Benchmark mode'
@@ -63,6 +64,10 @@ jobs:
     outputs:
       gateways: ${{ steps.build.outputs.gateways }}
       gateways_net: ${{ steps.build.outputs.gateways_net }}
+      gateways_constant: ${{ steps.build.outputs.gateways_constant }}
+      not_run_constant: ${{ steps.build.outputs.not_run_constant }}
+      gateways_burst: ${{ steps.build.outputs.gateways_burst }}
+      not_run_burst: ${{ steps.build.outputs.not_run_burst }}
       gateway_builds: ${{ steps.build.outputs.gateway_builds }}
       subgraph_builds: ${{ steps.build.outputs.subgraph_builds }}
       is_diagnostic: ${{ steps.flags.outputs.is_diagnostic }}
@@ -263,6 +268,16 @@ jobs:
                   "dotnet": "11",
               },
               {
+                  # Fusion (preview channel) composing the Apollo Federation subgraphs
+                  # via Apollo Federation connectors. Runs against the .NET subgraphs
+                  # only (see is_excluded: not run against rust).
+                  "path": "apollo-federation/gateways/fusion-nightly-fed",
+                  "name": "fusion-nightly-fed",
+                  "gateway_artifact": "prebuilt-gateway-fusion-nightly-fed",
+                  "channel": "preview",
+                  "dotnet": "10",
+              },
+              {
                   "path": "composite-schema/gateways/feddi",
                   "name": "feddi",
                   "gateway_artifact": "prebuilt-gateway-feddi",
@@ -330,7 +345,7 @@ jobs:
           # stable exists; otherwise "nightly" would benchmark a build older than (or
           # equal to) the stable run. An explicit fusion-nightly* selection is always
           # honored.
-          nightly_base_names = ("fusion-nightly", "fusion-nightly-net11")
+          nightly_base_names = ("fusion-nightly", "fusion-nightly-net11", "fusion-nightly-fed")
           nightly_in_chosen = any(e["base_name"] in nightly_base_names for e in chosen)
           nightly_explicit = selected_gateway in nightly_base_names
           if nightly_in_chosen and not nightly_explicit:
@@ -355,6 +370,38 @@ jobs:
           matrix_json = json.dumps(chosen, separators=(",", ":"))
           chosen_net = [e for e in chosen if e["subgraph_tech"] == ".net"]
           matrix_net_json = json.dumps(chosen_net, separators=(",", ":"))
+
+          # Per-mode exclusions: gateway/subgraph combinations that are intentionally
+          # not benchmarked in a given mode. Excluded combinations are removed from the
+          # run matrix but still surface in that mode's results table marked "not run"
+          # (via NOT_RUN_GATEWAYS_JSON -> generate-results.py), so nothing is silently
+          # dropped.
+          #
+          #   feddi              — crashes under the burst stress scenario (upstream
+          #                        heavy-query planner defect); excluded from burst.
+          #   fusion-nightly-fed — Fusion composing the Apollo Federation subgraphs
+          #                        only supports the .NET subgraphs, so it never runs
+          #                        against the rust subgraphs (all modes).
+          def is_excluded(entry, mode):
+              if entry["base_name"] == "feddi" and mode == "burst":
+                  return True
+              if entry["base_name"] == "fusion-nightly-fed" and entry["subgraph_tech"] == "rust":
+                  return True
+              return False
+
+          def split_for_mode(entries, mode):
+              run = [e for e in entries if not is_excluded(e, mode)]
+              not_run = [e for e in entries if is_excluded(e, mode)]
+              return run, not_run
+
+          chosen_constant, not_run_constant = split_for_mode(chosen, "constant")
+          matrix_constant_json = json.dumps(chosen_constant, separators=(",", ":"))
+          not_run_constant_json = json.dumps(not_run_constant, separators=(",", ":"))
+
+          chosen_burst, not_run_burst = split_for_mode(chosen, "burst")
+          matrix_burst_json = json.dumps(chosen_burst, separators=(",", ":"))
+          not_run_burst_json = json.dumps(not_run_burst, separators=(",", ":"))
+
           builds_by_artifact = {}
           for entry in chosen:
               artifact = entry["gateway_artifact"]
@@ -383,6 +430,10 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"gateways={matrix_json}\n")
               fh.write(f"gateways_net={matrix_net_json}\n")
+              fh.write(f"gateways_constant={matrix_constant_json}\n")
+              fh.write(f"not_run_constant={not_run_constant_json}\n")
+              fh.write(f"gateways_burst={matrix_burst_json}\n")
+              fh.write(f"not_run_burst={not_run_burst_json}\n")
               fh.write(f"gateway_builds={build_matrix_json}\n")
               fh.write(f"subgraph_builds={subgraph_matrix_json}\n")
 
@@ -471,7 +522,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways) }}
+        # gateways_constant excludes combinations not run in constant (e.g.
+        # fusion-nightly-fed against rust subgraphs) — those are marked "not run"
+        # in the constant results table instead (see prepare-matrix).
+        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways_constant) }}
     runs-on:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (constant)
@@ -668,7 +722,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways) }}
+        # gateways_burst excludes feddi — it is not run in the burst benchmark and is
+        # instead marked "not run" in the burst results table (see prepare-matrix).
+        gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways_burst) }}
     runs-on:
       group: benchmarking-1
     name: ${{ matrix.gateway.name }} (burst)
@@ -810,16 +866,9 @@ jobs:
           sudo chmod -R u+rwX,g+rwX "${{ matrix.gateway.path }}/diagnostics"
 
       - name: Run benchmark
-        # Feddi crashes under the burst stress scenario due to an upstream
-        # heavy-query planner defect (fix pending upstream). Tolerate ONLY
-        # feddi's burst failure so a known crash doesn't fail the whole run.
-        # The crash is NOT masked: the missing result still surfaces as a
-        # failed entry in the burst results table. Remove this once the
-        # upstream defect is fixed.
-        # NOTE: match base_name, not name — the matrix name is the expanded
-        # 'feddi-net' / 'feddi-rust', so `name == 'feddi'` never matched and the
-        # guard silently did nothing (feddi's burst crash still failed the run).
-        continue-on-error: ${{ matrix.gateway.base_name == 'feddi' }}
+        # Feddi is excluded from the burst matrix entirely (gateways_burst), so no
+        # per-gateway failure tolerance is needed here — it is reported as "not run"
+        # in the burst results table instead.
         run: ./k6/benchmark.sh ${{ matrix.gateway.path }} ${{ matrix.gateway.subgraphs }} burst
         env:
           BENCH_DISPLAY_NAME: ${{ matrix.gateway.display_name || '' }}
@@ -1078,6 +1127,9 @@ jobs:
         env:
           EXPECTED_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.gateways }}
           EXPECTED_GATEWAYS_NET_JSON: ${{ needs.prepare-matrix.outputs.gateways_net }}
+          # Gateways deliberately not run in constant (fusion-nightly-fed vs rust) —
+          # rendered as "not run".
+          NOT_RUN_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.not_run_constant }}
           RESULT_MODES: constant
         run: python3 k6/generate-results.py artifacts/ benchmark-runs/${{ github.run_number }}
 
@@ -1133,6 +1185,8 @@ jobs:
         env:
           EXPECTED_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.gateways }}
           EXPECTED_GATEWAYS_NET_JSON: ${{ needs.prepare-matrix.outputs.gateways_net }}
+          # Gateways deliberately not run in burst (feddi) — rendered as "not run".
+          NOT_RUN_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.not_run_burst }}
           RESULT_MODES: burst
         run: python3 k6/generate-results.py artifacts/ benchmark-runs/${{ github.run_number }}
 

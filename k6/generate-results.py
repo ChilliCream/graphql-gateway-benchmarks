@@ -217,8 +217,36 @@ def load_expected_gateways_by_mode():
     }
 
 
-def merge_failed_expected_entries(entries, expected_entries):
-    """Append placeholders for gateways with no successful result artifact."""
+def load_not_run_gateways_by_mode():
+    """Load gateways deliberately not run for each mode (from env).
+
+    These are reported as "not run" placeholders rather than "benchmark run
+    failed" — the gateway was intentionally excluded from the mode, not a crash.
+    """
+    not_run_raw = parse_expected_gateways_env("NOT_RUN_GATEWAYS_JSON")
+    not_run = dedupe_expected_gateways(
+        [to_expected_gateway_entry(item) for item in not_run_raw]
+    )
+    keys = {(e["gateway"], e["subgraph_tech"]) for e in not_run}
+    # NOT_RUN_GATEWAYS_JSON is populated per-invocation for the mode being generated
+    # (the workflow runs one generate step per mode and pairs each with that mode's
+    # not-run set), so the same keys apply to whichever mode is produced. Examples:
+    # feddi is not run in burst; fusion-nightly-fed is not run against rust subgraphs.
+    return {
+        "constant": keys,
+        "burst": keys,
+        "ramping": keys,
+        "constant-latency": keys,
+    }
+
+
+def merge_failed_expected_entries(entries, expected_entries, not_run_keys=frozenset()):
+    """Append placeholders for gateways with no successful result artifact.
+
+    A missing gateway whose key is in ``not_run_keys`` is labelled "not run"
+    (deliberately excluded from this mode); any other missing gateway is labelled
+    "benchmark run failed".
+    """
     existing_keys = {(e["gateway"], e["subgraph_tech"]) for e in entries}
     merged = list(entries)
 
@@ -229,6 +257,7 @@ def merge_failed_expected_entries(entries, expected_entries):
     missing.sort(key=lambda e: e["gateway"])
 
     for expected in missing:
+        is_not_run = (expected["gateway"], expected["subgraph_tech"]) in not_run_keys
         merged.append({
             "gateway": expected["gateway"],
             "subgraph_tech": expected["subgraph_tech"],
@@ -237,12 +266,13 @@ def merge_failed_expected_entries(entries, expected_entries):
             "best_rps": None,
             "worst_rps": None,
             "cv_pct": None,
-            "notes": "benchmark run failed",
+            "notes": "not run" if is_not_run else "benchmark run failed",
             "metrics": {},
             "k6_txt": "",
             "summary": {},
             "display_name": expected.get("display_name", expected["gateway"]),
             "failed_run": True,
+            "not_run": is_not_run,
         })
     return merged
 
@@ -383,10 +413,11 @@ def select_median_runs(results):
     return selected
 
 
-def generate_markdown(mode, results, expected_by_mode):
+def generate_markdown(mode, results, expected_by_mode, not_run_by_mode=None):
     """Generate results markdown for a given mode."""
     mode_results = [r for r in results if r["metadata"]["mode"] == mode]
     expected_mode_gateways = expected_by_mode.get(mode, [])
+    not_run_keys = (not_run_by_mode or {}).get(mode, set())
     if not mode_results and not expected_mode_gateways:
         return None
 
@@ -397,7 +428,7 @@ def generate_markdown(mode, results, expected_by_mode):
     else:
         print(f"\nNo successful result artifacts for mode '{mode}', generating failure placeholders.")
 
-    entries = merge_failed_expected_entries(entries, expected_mode_gateways)
+    entries = merge_failed_expected_entries(entries, expected_mode_gateways, not_run_keys)
     entries = sort_entries(entries)
 
     if mode_results:
@@ -582,6 +613,7 @@ def main():
     artifacts_dir = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else "."
     expected_by_mode = load_expected_gateways_by_mode()
+    not_run_by_mode = load_not_run_gateways_by_mode()
     requested_modes = {
         mode.strip() for mode in os.environ.get("RESULT_MODES", "").split(",")
         if mode.strip()
@@ -611,7 +643,7 @@ def main():
     ]:
         if requested_modes and mode not in requested_modes:
             continue
-        md = generate_markdown(mode, results, expected_by_mode)
+        md = generate_markdown(mode, results, expected_by_mode, not_run_by_mode)
         if md:
             output_path = os.path.join(output_dir, filename)
             with open(output_path, "w") as f:

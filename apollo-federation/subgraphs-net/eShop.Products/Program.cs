@@ -1,3 +1,4 @@
+using HotChocolate.AspNetCore;
 using HotChocolate.ApolloFederation;
 
 ThreadPool.SetMinThreads(256, 256);
@@ -7,6 +8,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services
     .AddGraphQLServer()
     .AddApolloFederation(FederationVersion.Federation27)
+    // Fusion sends transport-level request batches (a JSON array of operations) to
+    // subgraphs; HotChocolate 16 rejects those with HC0009 unless batching is enabled.
+    .ModifyServerOptions(o => o.Batching = AllowedBatching.All)
     .AddQueryType<eShop.Products.Query>()
     .AddHttpRequestInterceptor<BenchmarkHttpRequestInterceptor>();
 
@@ -21,12 +25,6 @@ if (string.Equals(Environment.GetEnvironmentVariable("BENCHMARK_SIMULATE_LATENCY
             await next(context);
         });
 }
-
-app.Use(async (context, next) =>
-{
-    context.Request.Headers.Accept = "application/json";
-    await next();
-});
 
 app.MapGraphQL();
 await app.RunAsync();
