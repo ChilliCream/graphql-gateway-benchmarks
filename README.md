@@ -1,18 +1,18 @@
 # GraphQL Gateway Benchmarks
 
-Performance benchmarks comparing GraphQL gateway implementations across federation and composite schema approaches.
+Performance benchmarks comparing GraphQL gateway implementations across Apollo Federation and GraphQL Federation.
 
-**Latest Results:** [Constant Load](./RESULTS_CONSTANT.md) | [Constant Load with Latency](./RESULTS_CONSTANT_LATENCY.md) | [Burst Load](./RESULTS_BURST.md)
+**Latest Results:** [Real-World](./RESULTS_CONSTANT_LATENCY.md) | [Burst](./RESULTS_BURST.md) | [Synthetic](./RESULTS_CONSTANT.md)
 
 ## Test categories
 
 Each benchmark runs a gateway against 4 subgraphs (`Accounts`, `Inventory`, `Products`, `Reviews`) and executes a heavy nested query. There are three test categories, each designed to measure different aspects of gateway performance:
 
-- **Constant Load** (`constant`) — 50 VUs for 120s. Simulates stable, sustained traffic against a gateway without any artificial latency on the subgraphs. Measures raw gateway throughput and how well it handles a steady request rate.
+- **Real-World** (`constant-latency`) — Shows how a gateway performs in real-world scenarios where downstream services make database calls and perform other I/O-bound work. Every downstream call adds 4 ms of latency, and the test runs with 50 concurrent VUs for 120 seconds.
 
-- **Constant Load with Latency** (`constant-latency`) — 50 VUs for 120s, .NET subgraphs only. Simulates more realistic requests by adding a 4ms delay per subgraph HTTP request, accounting for the database or service calls that would normally happen inside a subgraph. Shows how gateways perform when subgraph response times are non-trivial.
+- **Burst** (`burst`) — Shows how a gateway responds to rapidly increasing traffic. The benchmark holds a base load of 50 VUs for 10 seconds, ramps to 500 VUs over 40 seconds, and then ramps back to 50 VUs over 10 seconds.
 
-- **Burst** (`burst`) — 60s total, single burst from 50 to 500 VUs. Simulates a short, intense spike of traffic to see how gateways handle sudden load increases and recover afterward.
+- **Synthetic** (`constant`) — An artificial lab experiment that measures a gateway's theoretical throughput when downstream services make no database calls, perform no other I/O-bound work, and add no latency. This isolates gateway overhead from downstream latency. The test runs with 50 concurrent VUs for 120 seconds.
 
 ## Benchmark setup
 
@@ -35,7 +35,7 @@ Both benchmark families support both subgraph variants:
 - [Hive Gateway Router Runtime](./apollo-federation/gateways/hive-gateway-router-runtime) (Node.js)
 - [Hive Router](./apollo-federation/gateways/hive-router) (Rust)
 
-### [Composite Schema](https://graphql.github.io/composite-schemas-spec/)
+### [GraphQL Federation](https://graphql.github.io/composite-schemas-spec/)
 - [Fusion](./composite-schema/gateways/fusion) (.NET) — benchmarked as latest stable (`fusion`, built and run on the .NET 10 SDK), plus, when a HotChocolate preview newer than the latest stable exists, the latest preview on two runtimes: `fusion-nightly` (built and run on the .NET 10 SDK) and `fusion-nightly-net11` (built and run on the latest .NET 11 preview SDK bundled into its prebuilt artifact, with runtime-async). Running the same preview packages on both runtimes isolates framework effects from library changes.
 - [feddi](./composite-schema/gateways/feddi) (JVM) — built from source and bundled with a JDK 25 ([feddi-dev/feddi-gateway](https://github.com/feddi-dev/feddi-gateway)). See its [README](./composite-schema/gateways/feddi/README.md) for setup and a known heavy-query planner limitation.
 
