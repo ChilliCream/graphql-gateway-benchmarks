@@ -16,10 +16,14 @@ error.log
 data.csv
 version.txt
 
-## fusion-nightly-net11 (.NET 11) generated build inputs (bundled .NET 11 SDK + retargeting)
+## Fusion gateway generated build inputs: the bundled SDK and the gateway-local
+## global.json are generated for every .NET target; bench.props only for net11.
 composite-schema/gateways/fusion/.dotnet/
 composite-schema/gateways/fusion/global.json
 composite-schema/gateways/fusion/eShop.Gateway/bench.props
+apollo-federation/gateways/fusion-nightly-fed/.dotnet/
+apollo-federation/gateways/fusion-nightly-fed/global.json
+apollo-federation/gateways/fusion-nightly-fed/eShop.Gateway/bench.props
 
 ## .NET
 [Dd]ebug/

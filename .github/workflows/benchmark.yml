@@ -269,8 +269,7 @@ jobs:
               },
               {
                   # Fusion (preview channel) composing the Apollo Federation subgraphs
-                  # via Apollo Federation connectors. Runs against the .NET subgraphs
-                  # only (see is_excluded: not run against rust).
+                  # via Apollo Federation connectors.
                   "path": "apollo-federation/gateways/fusion-nightly-fed",
                   "name": "fusion-nightly-fed",
                   "gateway_artifact": "prebuilt-gateway-fusion-nightly-fed",
@@ -377,15 +376,10 @@ jobs:
           # (via NOT_RUN_GATEWAYS_JSON -> generate-results.py), so nothing is silently
           # dropped.
           #
-          #   feddi              — crashes under the burst stress scenario (upstream
-          #                        heavy-query planner defect); excluded from burst.
-          #   fusion-nightly-fed — Fusion composing the Apollo Federation subgraphs
-          #                        only supports the .NET subgraphs, so it never runs
-          #                        against the rust subgraphs (all modes).
+          #   feddi — crashes under the burst stress scenario (upstream
+          #           heavy-query planner defect); excluded from burst.
           def is_excluded(entry, mode):
               if entry["base_name"] == "feddi" and mode == "burst":
-                  return True
-              if entry["base_name"] == "fusion-nightly-fed" and entry["subgraph_tech"] == "rust":
                   return True
               return False
 
@@ -522,9 +516,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # gateways_constant excludes combinations not run in constant (e.g.
-        # fusion-nightly-fed against rust subgraphs) — those are marked "not run"
-        # in the constant results table instead (see prepare-matrix).
+        # gateways_constant excludes combinations not run in constant — those are
+        # marked "not run" in the constant results table instead (see prepare-matrix).
         gateway: ${{ fromJson(needs.prepare-matrix.outputs.gateways_constant) }}
     runs-on:
       group: benchmarking-1
@@ -1127,8 +1120,7 @@ jobs:
         env:
           EXPECTED_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.gateways }}
           EXPECTED_GATEWAYS_NET_JSON: ${{ needs.prepare-matrix.outputs.gateways_net }}
-          # Gateways deliberately not run in constant (fusion-nightly-fed vs rust) —
-          # rendered as "not run".
+          # Gateways deliberately not run in constant — rendered as "not run".
           NOT_RUN_GATEWAYS_JSON: ${{ needs.prepare-matrix.outputs.not_run_constant }}
           RESULT_MODES: constant
         run: python3 k6/generate-results.py artifacts/ benchmark-runs/${{ github.run_number }}

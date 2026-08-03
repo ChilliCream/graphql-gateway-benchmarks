@@ -10,9 +10,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #                          preview = newest prerelease (the latest nightly)
 #
 #   BENCH_GATEWAY_DOTNET   which .NET runtime / target framework to build and run on
-#                          10 = system .NET 10 SDK, targets net10.0 (default)
-#                          11 = bundled .NET 11 preview SDK, targets net11.0 with
-#                               runtime-async opted in
+#                          10 = bundled latest GA .NET 10 SDK, targets net10.0 (default)
+#                          11 = bundled latest .NET 11 preview SDK, targets net11.0
+#                               with runtime-async opted in
+#
+# Both targets bundle their own SDK inside the gateway directory, so the runtime
+# is a property of the prebuilt artifact rather than of the machine running it.
 #
 # The two axes are orthogonal, which is what lets the matrix run the preview
 # packages on BOTH runtimes to isolate framework effects (e.g. runtime-async):
@@ -41,55 +44,76 @@ case "$DOTNET_TARGET" in
 esac
 
 # --- Target-specific build inputs --------------------------------------------
-# The .NET 11 target (fusion-nightly-net11) must compile AND run on .NET 11.
-# Because the benchmark machine runs the *prebuilt* artifact (install.sh is
-# skipped there), the .NET 11 preview SDK is installed *inside* the gateway
-# directory so it travels with the artifact, and the gateway is retargeted to
-# net11.0:
-#   - $SCRIPT_DIR/.dotnet            bundled .NET 11 preview SDK (start.sh prefers it)
+# The benchmark machine runs the *prebuilt* artifact and never executes this
+# script, so the artifact itself must carry the runtime it is meant to be
+# measured on — otherwise whatever SDK happens to be installed on the machine
+# would silently decide the result. Every target therefore installs its own SDK
+# *inside* the gateway directory, where it travels with the artifact:
+#   10 = latest GA .NET 10 SDK,      gateway targets net10.0
+#   11 = latest .NET 11 preview SDK, gateway targets net11.0 + runtime-async
+#
+# Generated here (all gitignored):
+#   - $SCRIPT_DIR/.dotnet            bundled SDK (start.sh requires it at launch)
 #   - $SCRIPT_DIR/global.json        pins the bundled SDK (overrides the repo-root
 #                                    global.json, which pins .NET 10 / latestMinor)
-#   - eShop.Gateway/bench.props      retargets the gateway to net11.0 and opts
-#                                    into runtime-async (imported by the csproj
-#                                    only when present)
+#   - eShop.Gateway/bench.props      net11 only: retargets the gateway to net11.0
+#                                    and opts into runtime-async (imported by the
+#                                    csproj only when present)
 BUNDLED_DOTNET_DIR="$SCRIPT_DIR/.dotnet"
 GATEWAY_GLOBAL_JSON="$SCRIPT_DIR/global.json"
 BENCH_PROPS="$SCRIPT_DIR/eShop.Gateway/bench.props"
 
 if [[ "$DOTNET_TARGET" == "11" ]]; then
-  # --- Install the latest .NET 11 preview SDK, bundled into the gateway dir ---
-  echo "Installing the latest .NET 11 preview SDK into $BUNDLED_DOTNET_DIR ..."
-  rm -rf "$BUNDLED_DOTNET_DIR"
-  curl -sSL https://dot.net/v1/dotnet-install.sh \
-    | bash -s -- --channel 11.0 --quality preview --install-dir "$BUNDLED_DOTNET_DIR"
+  # .NET 11 has no GA release yet, so the preview quality band is the only source.
+  DOTNET_INSTALL_ARGS=(--channel 11.0 --quality preview)
+  ALLOW_PRERELEASE=true
+else
+  # No --quality: dotnet-install.sh then resolves the latest GA patch of the band.
+  DOTNET_INSTALL_ARGS=(--channel 10.0)
+  ALLOW_PRERELEASE=false
+fi
 
-  export DOTNET_ROOT="$BUNDLED_DOTNET_DIR"
-  export PATH="$BUNDLED_DOTNET_DIR:$PATH"
-  DOTNET="$BUNDLED_DOTNET_DIR/dotnet"
+# --- Install the target SDK, bundled into the gateway dir --------------------
+# Clear the previous target's generated inputs up front, before anything that can
+# fail: a download that dies half way then leaves a neutral tree instead of one
+# whose global.json pins an SDK that is no longer installed and whose bench.props
+# still retargets to the other framework. Both are (re)written below on success.
+# CI uses fresh checkouts; local runs may reuse the tree.
+echo "Installing the .NET $DOTNET_TARGET SDK into $BUNDLED_DOTNET_DIR ..."
+rm -rf "$BUNDLED_DOTNET_DIR"
+rm -f "$GATEWAY_GLOBAL_JSON" "$BENCH_PROPS"
+curl -sSL https://dot.net/v1/dotnet-install.sh \
+  | bash -s -- "${DOTNET_INSTALL_ARGS[@]}" --install-dir "$BUNDLED_DOTNET_DIR"
 
-  # --list-sdks ignores global.json and (with multi-level lookup off) only lists
-  # SDKs in the bundled dir, so this is the version we actually installed.
-  SDK_VERSION="$("$DOTNET" --list-sdks | awk '{print $1}' | sort -V | tail -n1)"
-  SDK_MAJOR="${SDK_VERSION%%.*}"
-  if [[ "$SDK_MAJOR" != "11" ]]; then
-    echo "ERROR: the net11 target requires a .NET 11 SDK but installed '$SDK_VERSION'"
-    exit 1
-  fi
-  echo "Bundled .NET SDK: $SDK_VERSION"
+export DOTNET_ROOT="$BUNDLED_DOTNET_DIR"
+export PATH="$BUNDLED_DOTNET_DIR:$PATH"
+DOTNET="$BUNDLED_DOTNET_DIR/dotnet"
 
-  # Pin the bundled SDK so .NET 11 is selected at build *and* run time. The
-  # repo-root global.json pins .NET 10 with rollForward=latestMinor, which would
-  # otherwise force SDK 10 here — a nearer global.json takes precedence.
-  cat > "$GATEWAY_GLOBAL_JSON" <<EOF
+# --list-sdks ignores global.json and (with multi-level lookup off) only lists
+# SDKs in the bundled dir, so this is the version we actually installed.
+SDK_VERSION="$("$DOTNET" --list-sdks | awk '{print $1}' | sort -V | tail -n1)"
+SDK_MAJOR="${SDK_VERSION%%.*}"
+if [[ "$SDK_MAJOR" != "$DOTNET_TARGET" ]]; then
+  echo "ERROR: target .NET $DOTNET_TARGET requires a .NET $DOTNET_TARGET SDK but installed '${SDK_VERSION:-none}'"
+  exit 1
+fi
+echo "Bundled .NET SDK: $SDK_VERSION"
+
+# Pin the bundled SDK so the selected runtime is used at build *and* run time.
+# The repo-root global.json pins .NET 10 with rollForward=latestMinor, which
+# would otherwise steer SDK resolution here — a nearer global.json takes
+# precedence.
+cat > "$GATEWAY_GLOBAL_JSON" <<EOF
 {
   "sdk": {
     "version": "$SDK_VERSION",
     "rollForward": "latestMinor",
-    "allowPrerelease": true
+    "allowPrerelease": $ALLOW_PRERELEASE
   }
 }
 EOF
 
+if [[ "$DOTNET_TARGET" == "11" ]]; then
   # Retarget the gateway to net11.0 and opt into .NET 11 runtime-async (imported
   # by eShop.Gateway.csproj when present).
   #
@@ -114,29 +138,6 @@ EOF
   </PropertyGroup>
 </Project>
 EOF
-else
-  # --- .NET 10: build and run on the system .NET 10 SDK ---
-  # Remove any .NET 11 retargeting left over from an earlier net11 build in this
-  # working tree (CI uses fresh checkouts; local runs may reuse the tree).
-  rm -rf "$BUNDLED_DOTNET_DIR"
-  rm -f "$GATEWAY_GLOBAL_JSON" "$BENCH_PROPS"
-
-  REQUIRED_DOTNET_MAJOR=10
-  if command -v dotnet &>/dev/null; then
-    INSTALLED_MAJOR=$(dotnet --version | cut -d. -f1)
-    if [[ "$INSTALLED_MAJOR" -ge "$REQUIRED_DOTNET_MAJOR" ]]; then
-      echo ".NET SDK already installed: $(dotnet --version)"
-    else
-      echo ".NET SDK $INSTALLED_MAJOR found but need $REQUIRED_DOTNET_MAJOR+. Installing..."
-      curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
-      export PATH="$HOME/.dotnet:$PATH"
-    fi
-  else
-    echo ".NET SDK not found. Installing .NET $REQUIRED_DOTNET_MAJOR..."
-    curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel "$REQUIRED_DOTNET_MAJOR.0"
-    export PATH="$HOME/.dotnet:$PATH"
-  fi
-  DOTNET="dotnet"
 fi
 
 echo "Fetching latest $CHANNEL HotChocolate version from NuGet..."
@@ -209,6 +210,16 @@ for csproj in "$SCRIPT_DIR"/*/*.csproj; do
 done
 
 # --- Build ---
+# `dotnet build` never removes another target framework's output, so a reused
+# tree that was last built for a different BENCH_GATEWAY_DOTNET would keep that
+# stale TFM directory around. The benchmark machine derives the runtime the
+# artifact expects from the TFM directory under bin/Release, so leave exactly one.
+GATEWAY_BIN_DIR="$SCRIPT_DIR/eShop.Gateway/bin/Release"
+if [[ -d "$GATEWAY_BIN_DIR" ]]; then
+  find "$GATEWAY_BIN_DIR" -mindepth 1 -maxdepth 1 -type d -name 'net*' \
+    ! -name "net${DOTNET_TARGET}.0" -exec rm -rf {} +
+fi
+
 echo "Building Fusion gateway ($CHANNEL channel, .NET $DOTNET_TARGET)..."
 cd "$SCRIPT_DIR/eShop.Gateway" && "$DOTNET" build -c Release --nologo -v quiet
 

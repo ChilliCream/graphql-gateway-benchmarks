@@ -670,24 +670,46 @@ if [[ "${USE_PREBUILT_GATEWAY:-0}" == "1" ]]; then
     exit 1
   fi
 
-  if [[ "$GATEWAY_DIR" == *"/composite-schema/gateways/fusion" ]]; then
-    # The net11 build (fusion-nightly-net11) bundles its own .NET 11 SDK inside the
-    # artifact (.dotnet/), which start.sh prefers at launch. When present, assert it
-    # is the .NET 11 SDK the gateway was built for, so a missing/corrupt bundle fails
-    # loudly here instead of later as a gateway-health timeout. The .NET 10 builds
-    # (fusion and fusion-nightly) have no bundle and rely on perfrunner's system dotnet.
-    if [[ -x "$GATEWAY_DIR/.dotnet/dotnet" ]]; then
-      # --list-sdks ignores global.json, so it reports the actually-bundled SDK.
-      BUNDLED_SDK_VERSION="$(run_as_perfrunner "$GATEWAY_DIR/.dotnet/dotnet" --list-sdks 2>/dev/null | awk '{print $1}' | sort -V | tail -n1)"
-      if [[ "${BUNDLED_SDK_VERSION%%.*}" != "11" ]]; then
-        echo "Error: bundled gateway .NET SDK at $GATEWAY_DIR/.dotnet is not .NET 11 (found '${BUNDLED_SDK_VERSION:-none}')"
-        exit 1
-      fi
-      echo "Gateway bundled .NET SDK: $BUNDLED_SDK_VERSION (net11 build runs on .NET 11)"
-    elif ! run_as_perfrunner bash -lc 'command -v dotnet >/dev/null'; then
-      echo "Error: expected dotnet runtime in prebuilt gateway mode, but it is not available to perfrunner"
+  if [[ -f "$GATEWAY_DIR/eShop.Gateway/eShop.Gateway.csproj" ]]; then
+    # Every .NET gateway artifact ships the SDK it was built with inside .dotnet/,
+    # which start.sh runs it on. The invariant: that bundled SDK must match the
+    # target framework the app was actually built for. Checking it here turns a
+    # missing/mismatched bundle into an immediate, explicit failure instead of a
+    # gateway-health timeout, and prevents silently measuring the wrong runtime.
+    #
+    # install.sh drops every other target's output before building, so the artifact
+    # carries exactly one TFM dir and its name is the framework the gateway must run
+    # on. Two dirs mean stale output from a previously benchmarked target: guessing
+    # one would either abort a valid run or measure the wrong runtime, so name the
+    # real problem instead. `|| true` keeps the empty case from tripping `set -e`
+    # before the explicit errors below.
+    GATEWAY_BUILD_DIRS="$(ls -d "$GATEWAY_DIR"/eShop.Gateway/bin/Release/net*/ 2>/dev/null || true)"
+    if [[ -z "$GATEWAY_BUILD_DIRS" ]]; then
+      echo "Error: no gateway build output under $GATEWAY_DIR/eShop.Gateway/bin/Release/net*/"
       exit 1
     fi
+    if [[ "$(wc -l <<<"$GATEWAY_BUILD_DIRS")" -gt 1 ]]; then
+      echo "Error: ambiguous gateway build output under $GATEWAY_DIR/eShop.Gateway/bin/Release/ - stale output from another target framework:"
+      echo "$GATEWAY_BUILD_DIRS"
+      echo "       re-run install.sh in $GATEWAY_DIR to rebuild a single-target artifact"
+      exit 1
+    fi
+    GATEWAY_TFM="$(basename "$GATEWAY_BUILD_DIRS")"
+    EXPECTED_SDK_MAJOR="${GATEWAY_TFM#net}"
+    EXPECTED_SDK_MAJOR="${EXPECTED_SDK_MAJOR%%.*}"
+
+    if [[ ! -x "$GATEWAY_DIR/.dotnet/dotnet" ]]; then
+      echo "Error: expected a bundled .NET SDK at $GATEWAY_DIR/.dotnet/dotnet in prebuilt gateway mode"
+      exit 1
+    fi
+
+    # --list-sdks ignores global.json, so it reports the actually-bundled SDK.
+    BUNDLED_SDK_VERSION="$(run_as_perfrunner "$GATEWAY_DIR/.dotnet/dotnet" --list-sdks 2>/dev/null | awk '{print $1}' | sort -V | tail -n1)"
+    if [[ "${BUNDLED_SDK_VERSION%%.*}" != "$EXPECTED_SDK_MAJOR" ]]; then
+      echo "Error: bundled gateway .NET SDK at $GATEWAY_DIR/.dotnet is not .NET $EXPECTED_SDK_MAJOR as required by the $GATEWAY_TFM build (found '${BUNDLED_SDK_VERSION:-none}')"
+      exit 1
+    fi
+    echo "Gateway bundled .NET SDK: $BUNDLED_SDK_VERSION (built for $GATEWAY_TFM)"
   fi
 
   echo "Using prebuilt gateway artifact, skipping gateway install.sh"

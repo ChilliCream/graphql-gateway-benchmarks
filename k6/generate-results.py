@@ -230,8 +230,8 @@ def load_not_run_gateways_by_mode():
     keys = {(e["gateway"], e["subgraph_tech"]) for e in not_run}
     # NOT_RUN_GATEWAYS_JSON is populated per-invocation for the mode being generated
     # (the workflow runs one generate step per mode and pairs each with that mode's
-    # not-run set), so the same keys apply to whichever mode is produced. Examples:
-    # feddi is not run in burst; fusion-nightly-fed is not run against rust subgraphs.
+    # not-run set), so the same keys apply to whichever mode is produced. Example:
+    # feddi is not run in burst.
     return {
         "constant": keys,
         "burst": keys,
