@@ -29,6 +29,7 @@ Both benchmark families support both subgraph variants:
 ### Apollo Federation
 - [Apollo Gateway](./apollo-federation/gateways/apollo-gateway) (Node.js)
 - [Apollo Router](./apollo-federation/gateways/apollo-router) (Rust)
+- [Caliban](./apollo-federation/gateways/caliban) (Scala)
 - [Cosmo](./apollo-federation/gateways/cosmo) (Go)
 - [Grafbase](./apollo-federation/gateways/grafbase) (Rust)
 - [Hive Gateway](./apollo-federation/gateways/hive-gateway) (Node.js)

@@ -16,6 +16,7 @@ on:
           - all
           - apollo-gateway
           - apollo-router
+          - caliban
           - cosmo
           - grafbase
           - hive-gateway
@@ -220,6 +221,11 @@ jobs:
                   "path": "apollo-federation/gateways/apollo-router",
                   "name": "apollo-router",
                   "gateway_artifact": "prebuilt-gateway-apollo-router",
+              },
+              {
+                  "path": "apollo-federation/gateways/caliban",
+                  "name": "caliban",
+                  "gateway_artifact": "prebuilt-gateway-caliban",
               },
               {
                   "path": "apollo-federation/gateways/cosmo",
