@@ -24,7 +24,7 @@ the benchmark port layout (gateway on `5220`, subgraphs on `5221`–`5224`).
 - **`feddi-gateway.yml`** sets the gateway port (`5220`), admin port (`9091`),
   and management/health port (`9090`, `GET /actuator/health`).
 - **`subgraph-config/<name>/`** holds each subgraph's `schema.graphqls` + a
-  `config.yaml` with its `url`.
+  `config.yaml` with its `url` and `batching: variables` (see below).
 
 ### Subgraph SDL adaptation (`@key`)
 
@@ -39,35 +39,23 @@ declaration only — entity resolution still happens through the `@lookup` field
 ### Subgraph connection pool
 
 `start.sh` raises the reactor-netty subgraph connection pool
-(`-Dreactor.netty.pool.maxConnections`) above feddi's default of 500/host. The
-benchmark's nested query fans out into many concurrent per-entity subgraph
-requests, which otherwise exhausts the default pool. This is the equivalent of
+(`-Dreactor.netty.pool.maxConnections`) above feddi's default of 500/host. Under
+load the benchmark keeps many subgraph requests in flight, which can otherwise
+exhaust the default pool. This is the equivalent of
 the connection settings the other gateways ship with (e.g. fusion's
 `MaxConnectionsPerServer=256`). Override with `FEDDI_SUBGRAPH_MAX_CONNECTIONS`.
 
-## Known limitation — heavy query planner defect
+## Entity batching
 
-> **As of the pinned commit, feddi does not return correct results for the
-> benchmark's standard heavy query.**
+feddi deduplicates entity lookups per plan step and, per subgraph, can batch them
+(`batching:` in the subgraph's `config.yaml`):
 
-feddi composes the schema and correctly executes a wide range of queries
-(single-subgraph, two/three-hop cross-subgraph, deep single-root recursion, and
-dual-root queries). However, on the benchmark's full deeply-recursive,
-dual-root query it mis-plans the operation: it grafts the root field
-`topProducts` onto a `User` entity lookup sent to the `accounts` subgraph, e.g.
+- `none` (feddi's default): one request per unique entity.
+- `alias`: one spec-compliant request with an aliased lookup per entity; works
+  with any GraphQL server.
+- `variables`: one request with a `variables` array (variable batching, as
+  proposed in graphql-over-http#307); the subgraph must support it.
 
-```graphql
-query ($id: ID!) {
-  user(id: $id) {
-    username
-    name
-    topProducts { reviews { author { username name } } }  # topProducts is not a field of User
-  }
-}
-```
-
-The `accounts` subgraph rejects this with
-`The field 'topProducts' does not exist on the type 'User'`, so the benchmark
-run reports subgraph errors and only partial data rather than a throughput
-number. This is an upstream query-planner defect (not a composition or
-configuration issue in this integration) and is expected to be fixed in feddi.
+The benchmark subgraphs (HotChocolate and the Rust subgraphs) support variable
+batching, so this integration uses `batching: variables`. The heavy query then
+needs 8 subgraph requests.
