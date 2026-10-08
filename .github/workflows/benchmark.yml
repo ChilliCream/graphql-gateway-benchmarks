@@ -59,7 +59,43 @@ permissions:
   contents: write
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that a benchmark runner is online
+        env:
+          GH_TOKEN: ${{ secrets.BENCHMARK_RUNNER_STATUS_TOKEN }}
+          RUNNER_GROUP: benchmarking-1
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::warning::Skipping the runner check: set the BENCHMARK_RUNNER_STATUS_TOKEN secret to a token with the organization permission 'Self-hosted runners: read'."
+            exit 0
+          fi
+
+          ORG="${GITHUB_REPOSITORY%%/*}"
+          GROUP_ID="$(gh api "orgs/$ORG/actions/runner-groups?per_page=100" \
+            --jq ".runner_groups[] | select(.name == \"$RUNNER_GROUP\") | .id")"
+          if [[ -z "$GROUP_ID" ]]; then
+            echo "::error::Runner group $RUNNER_GROUP not found in $ORG."
+            exit 1
+          fi
+
+          # Runners are ephemeral: a new one registers a few minutes after each job ends.
+          for attempt in {1..10}; do
+            ONLINE="$(gh api "orgs/$ORG/actions/runner-groups/$GROUP_ID/runners?per_page=100" \
+              --jq '[.runners[] | select(.status == "online")] | length')"
+            if (( ONLINE > 0 )); then
+              exit 0
+            fi
+            echo "No runner online in $RUNNER_GROUP (attempt $attempt/10)."
+            sleep 30
+          done
+          echo "::error::No runner in $RUNNER_GROUP is online."
+          exit 1
+
   prepare-matrix:
+    needs: preflight
     runs-on: ubuntu-latest
     outputs:
       gateways: ${{ steps.build.outputs.gateways }}
